@@ -14,9 +14,9 @@ MODULE_DESCRIPTION("testelele");
 #define FORTYTWOFS_MAGIC 0x4242
 
 static const struct address_space_operations ft_aops = {
-    .readpage       = simple_readpage,
-    .write_begin    = simple_write_begin,
-    .write_end      = simple_write_end,
+    /* .readpage       = simple_readpage, */
+    /* .write_begin    = simple_write_begin, */
+    /* .write_end      = simple_write_end, */
 };
 
 static const struct inode_operations ft_file_inode_operations = {
@@ -24,9 +24,31 @@ static const struct inode_operations ft_file_inode_operations = {
     .getattr        = simple_getattr,
 };
 
-static int ft_fops_set(void *data, u64 val) { LOG("Hi"); return 0; }
-static int ft_fops_get(void *data, u64 *val) { LOG("Hi"); return 0; }
-DEFINE_SIMPLE_ATTRIBUTE(ft_file_operations, ft_fops_get, ft_fops_set, "%llx\n");
+static const struct inode_operations ft_dir_inode_operations = {
+    /* .create     = ftfs_create, [> TODO <] */
+    /* .lookup     = simple_lookup, */
+    /* .link       = simple_link, */
+    /* .unlink     = simple_unlink, */
+    /* .symlink    = ftfs_symlink, [> TODO <] */
+    /* .mkdir      = ftfs_mkdir, [> TODO <] */
+    /* .rmdir      = simple_rmdir, */
+    /* .mknod      = ftfs_mknod, [> TODO <] */
+    /* .rename     = simple_rename, */
+};
+
+static const struct file_operations ft_file_operations = {              
+    .owner        = THIS_MODULE,
+    .release      = simple_attr_release,
+    .read         = simple_attr_read,
+    .write        = simple_attr_write,
+    .llseek       = generic_file_llseek,
+    .read_iter    = generic_file_read_iter,
+    .write_iter   = generic_file_write_iter,
+    .mmap         = generic_file_mmap,
+    .fsync        = noop_fsync,
+    .splice_read  = generic_file_splice_read,
+    .splice_write = iter_file_splice_write,
+};
 
 static struct inode *ft_get_inode(struct super_block *sb, unsigned long ino, umode_t mode)
 {
@@ -50,7 +72,7 @@ static struct inode *ft_get_inode(struct super_block *sb, unsigned long ino, umo
         inode->i_fop            = &ft_file_operations;
         break;
     case S_IFDIR:           LOG("dir");
-        inode->i_op             = &simple_dir_inode_operations;
+        inode->i_op             = &ft_dir_inode_operations;
         inode->i_mapping->a_ops = &ft_aops;
         inode->i_fop            = &simple_dir_operations;
         break;
@@ -68,8 +90,8 @@ static struct inode *ft_get_inode(struct super_block *sb, unsigned long ino, umo
 
 static const struct super_operations ft_ops = { // TODO: meilleures op: http://lxr.free-electrons.com/source/fs/ext2/super.c#L323
     .statfs       = simple_statfs,
-    .drop_inode   = generic_delete_inode,
-    .show_options = generic_show_options,
+    /* .drop_inode   = generic_delete_inode, */
+    /* .show_options = generic_show_options, */
 };
 
 static int ft_fill_super(struct super_block *sb, void *data, int silent)
