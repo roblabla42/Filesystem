@@ -27,6 +27,11 @@ function error()
     exit
 }
 
+if [[ $EUID -ne 0 ]]; then
+    echo "start the shell in root"
+    return
+fi
+
 if [[ ! -e $MOUNT_IMG ]]; then
     echo "please create $MOUNT_IMG"
     return
