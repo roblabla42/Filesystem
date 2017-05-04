@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-MODULE=main
+MODULE=ftfs
 MOUNT_POINT=./fs
 MOUNT_IMG=./img
 
