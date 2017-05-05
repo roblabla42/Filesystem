@@ -10,7 +10,7 @@
 #define FORTYTWOFS_MAGIC 0x4242
 
 
-struct inode *ft_get_inode(struct super_block *sb, unsigned long ino, umode_t mode);
+struct inode *ft_get_inode(struct super_block *sb, const struct inode *dir, umode_t mode, ino_t ino);
 
 extern       struct file_system_type         ft_type;
 extern const struct address_space_operations ft_aops;

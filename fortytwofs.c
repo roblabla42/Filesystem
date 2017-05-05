@@ -1,9 +1,9 @@
 #include "fortytwofs.h"
 
 const struct address_space_operations ft_aops = {
-    /* .readpage       = simple_readpage, */
-    /* .write_begin    = simple_write_begin, */
-    /* .write_end      = simple_write_end, */
+    .readpage       = simple_readpage,
+    .write_begin    = simple_write_begin,
+    .write_end      = simple_write_end,
 };
 
 const struct inode_operations ft_file_inode_operations = {
@@ -27,8 +27,8 @@ const struct file_operations ft_file_operations = {
 
 struct super_operations ft_ops = { // TODO: meilleures op: http://lxr.free-electrons.com/source/fs/ext2/super.c#L323
     .statfs       = simple_statfs,
-    /* .drop_inode   = generic_delete_inode, */
-    /* .show_options = generic_show_options, */
+    .drop_inode   = generic_delete_inode,
+    .show_options = generic_show_options,
 };
 
 static int ft_fill_super(struct super_block *sb, void *data, int silent)
@@ -44,10 +44,10 @@ static int ft_fill_super(struct super_block *sb, void *data, int silent)
     sb->s_op             = &ft_ops;
     sb->s_time_gran      = 1;
 
-    root_inode = ft_get_inode(sb, FT_ROOT_INODE, S_IFDIR); // TODO: il faut que cette inode soit S_IFDIR
+    root_inode = ft_get_inode(sb, NULL, S_IFDIR, FT_ROOT_INODE);
     if (!(sb->s_root = d_make_root(root_inode)))
         return -ENOMEM;
-    LOG("root inode created");
+    LOG("got root inode");
     return ret;
 }
 
@@ -57,11 +57,16 @@ static struct dentry *ft_mount(struct file_system_type *fs_type, int flags, cons
     return mount_bdev(fs_type, flags, dev_name, data, ft_fill_super);
 }
 
+static void ft_kill_sb(struct super_block *sb)
+{
+    kill_litter_super(sb);
+}
+
 struct file_system_type ft_type = {
     .owner    = THIS_MODULE,
     .name     = "fortytwofs",
-    .mount    = ft_mount, // TODO tout se passe bien au retour de ft_mount,
-    .kill_sb  = kill_block_super, // va falloir chercher ou sa plante
+    .mount    = ft_mount,
+    .kill_sb  = ft_kill_sb,
     .fs_flags = FS_REQUIRES_DEV,
 };
 

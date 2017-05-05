@@ -1,18 +1,8 @@
 #include "fortytwofs.h"
 
-static const struct inode_operations ft_dir_inode_operations = {
-    /* .create     = ftfs_create, [> TODO <] */
-    /* .lookup     = simple_lookup, */
-    /* .link       = simple_link, */
-    /* .unlink     = simple_unlink, */
-    /* .symlink    = ftfs_symlink, [> TODO <] */
-    /* .mkdir      = ftfs_mkdir, [> TODO <] */
-    /* .rmdir      = simple_rmdir, */
-    /* .mknod      = ftfs_mknod, [> TODO <] */
-    /* .rename     = simple_rename, */
-};
+static const struct inode_operations ft_dir_inode_operations;
 
-struct inode *ft_get_inode(struct super_block *sb, unsigned long ino, umode_t mode)
+struct inode *ft_get_inode(struct super_block *sb, const struct inode *dir, umode_t mode, ino_t ino)
 {
     struct inode *inode;
 
@@ -24,7 +14,7 @@ struct inode *ft_get_inode(struct super_block *sb, unsigned long ino, umode_t mo
         return inode;
 
     LOG("new inode");
-    inode_init_owner(inode, NULL, mode); /* TODO: dir=NULL, il faut peut etre mettre un truc */
+    inode_init_owner(inode, dir, mode);
     inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
     switch (inode->i_mode & S_IFMT)
     {
@@ -50,3 +40,36 @@ struct inode *ft_get_inode(struct super_block *sb, unsigned long ino, umode_t mo
     return inode;
 }
 
+static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+{
+    struct inode *inode = ft_get_inode(dir->i_sb, dir, mode, get_next_ino());
+
+    if (!inode)
+        return -ENOSPC;
+    d_instantiate(dentry, inode);
+    dget(dentry);
+    dir->i_mtime = dir->i_ctime = CURRENT_TIME;
+    return 0;
+}
+
+static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+{
+    return ftfs_mknod(dir, dentry, mode | S_IFDIR, 0);
+}
+
+static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
+{
+    return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
+}
+
+static const struct inode_operations ft_dir_inode_operations = {
+    .create     = ftfs_create,
+    .lookup     = simple_lookup,
+    .link       = simple_link,
+    .unlink     = simple_unlink,
+    /* .symlink    = ftfs_symlink, [> TODO <] */
+    .mkdir      = ftfs_mkdir,
+    .rmdir      = simple_rmdir,
+    .mknod      = ftfs_mknod,
+    .rename     = simple_rename,
+};
