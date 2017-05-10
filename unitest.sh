@@ -10,22 +10,21 @@ function err()
 }
 function log()
 {
-    echo "\e[38;5;208m### $@\e[37m"
+    echo "\e[38;5;214m### $@\e[37m"
 }
 
 function u() # $1: testname, $2: test
 {
     NAME="$1"
     shift
-    printf "> \e[36m%s\e[37m\n" "$NAME"
+    printf "        > \e[36m%s\e[37m" "$NAME"
     $* >/dev/null 2>&1
     RET=$?
     if [[ $RET -eq 0 ]]; then
-        printf "\e[32m[OK]\e[37m:%2d\n" $RET
+        printf "\r\e[32m[OK]\e[37m:%2d\n" $RET
     else
-        printf "\e[31m[KO]\e[37m:%2d\n" $RET
+        printf "\r\e[31m[KO]\e[37m:%2d\n" $RET
     fi
-    echo
     return $RET
 }
 
@@ -96,7 +95,7 @@ function do_test()
     u "cd"             cd ..
     u "rmdir"          rmdir DIR
 
-    u "write"          echo coucou > FILE
+    u "write"          ex -sc 'a|coucou' -cx FILE
     u "read"           cat FILE
     u "check write"    grep -q coucou FILE
 
