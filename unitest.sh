@@ -12,10 +12,11 @@ function u() # $1: testname, $2: test
     $* >/dev/null 2>&1
     RET=$?
     if [[ $RET -eq 0 ]]; then
-        printf "\e[32m[OK]\e[37m:%2d\n\n" $RET
+        printf "\e[32m[OK]\e[37m:%2d\n" $RET
     else
-        printf "\e[31m[KO]\e[37m:%2d\n\n" $RET
+        printf "\e[31m[KO]\e[37m:%2d\n" $RET
     fi
+    echo
     return $RET
 }
 
@@ -73,7 +74,8 @@ u "stat subfile"   test -e FILE
 u "rm subfile"     rm FILE
 u "cd"             cd ..
 u "rmdir"          rmdir DIR
-# u "write"          echo coucou > FILE
-# u "read"           cat FILE
+u "write"          echo coucou > FILE
+u "read"           cat FILE
+u "check write"    grep coucou FILE
 
 echo " === THE END === "
