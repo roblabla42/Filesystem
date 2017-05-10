@@ -4,6 +4,15 @@ MODULE=ftfs
 MOUNT_POINT=./fs
 MOUNT_IMG=./img
 
+function err()
+{
+    echo "\e[38;5;196m!!! $@\e[37m"
+}
+function log()
+{
+    echo "\e[38;5;208m### $@\e[37m"
+}
+
 function u() # $1: testname, $2: test
 {
     NAME="$1"
@@ -23,64 +32,100 @@ function u() # $1: testname, $2: test
 function error()
 {
     echo
-    echo " === ERROR === "
-    echo "\e[31mfatal error, test stopped ($1)\e[37m"
+    err "ERROR"
+    err "\e[31mfatal error, test stopped ($1)\e[37m"
     python -c "import os; print '{}'.format(os.strerror($1))"
     exit
 }
 
 if [[ $EUID -ne 0 ]]; then
-    echo "start the shell in root"
+    err "start the shell in root"
     return
 fi
 
 if [[ ! -e $MOUNT_IMG ]]; then
-    echo "please create $MOUNT_IMG"
+    err "please create $MOUNT_IMG"
     return
 fi
 
 if [[ ! -d $MOUNT_POINT ]]; then
     mkdir $MOUNT_POINT
-    echo "created $MOUNT_POINT directory"
+    log "created $MOUNT_POINT directory"
 fi
 
-if mountpoint -q fs; then
-    echo "$MOUNT_POINT already mounted"
-    umount fs
-    echo "  $MOUNT_POINT unmounted"
+if mountpoint -q $MOUNT_POINT; then
+    log "$MOUNT_POINT already mounted"
+    umount $MOUNT_POINT
+    log "  $MOUNT_POINT unmounted"
 fi
 
 if lsmod | grep -q $MODULE; then
-    echo "$MODULE already loaded"
+    log "$MODULE already loaded"
     rmmod $MODULE
-    echo "  $MODULE unloaded"
+    log "  $MODULE unloaded"
 fi
 
-insmod $MODULE.ko && echo "$MODULE loaded" || return
+insmod $MODULE.ko && log "$MODULE loaded" || return
 
-echo
-echo " === BEGINNING TEST === "
-echo
 
-u "mount"          mount -t fortytwofs -o loop $MOUNT_IMG $MOUNT_POINT || error $?
-u "cd fs"          cd fs                                               || error $?
+function do_sh()
+{
+    log starting shell
+    bash
+}
 
-u "create"         touch FILE
-u "stat file"      test -e FILE
+function do_test()
+{
+    log
+    log "=== BEGINNING TEST === "
+    log
 
-u "mkdir"          mkdir DIR                                           || error $?
-u "test dir"       test -d DIR
-u "cd"             cd DIR                                              || error $?
+    u "cd fs"          cd fs                                               || error $?
 
-u "create subfile" touch FILE
-u "stat subfile"   test -e FILE
-u "rm subfile"     rm FILE
+    u "create"         touch FILE
+    u "stat file"      test -e FILE
 
-u "cd"             cd ..
-u "rmdir"          rmdir DIR
+    u "mkdir"          mkdir DIR                                           || error $?
+    u "test dir"       test -d DIR
+    u "cd"             cd DIR                                              || error $?
 
-u "write"          echo coucou > FILE
-u "read"           cat FILE
-u "check write"    grep -q coucou FILE
+    u "create subfile" touch FILE
+    u "stat subfile"   test -e FILE
+    u "rm subfile"     rm FILE
 
-echo " === THE END === "
+    u "cd"             cd ..
+    u "rmdir"          rmdir DIR
+
+    u "write"          echo coucou > FILE
+    u "read"           cat FILE
+    u "check write"    grep -q coucou FILE
+
+    log "=== THE END === "
+}
+
+
+log "mounting $MOUNT_IMG on $MOUNT_POINT"
+mount -t fortytwofs -o loop $MOUNT_IMG $MOUNT_POINT
+
+pushd $PWD
+
+for arg in $@; do
+    case $arg in
+        "sh")
+            do_sh
+            ;;
+        "test")
+            do_test
+            ;;
+        *)
+            err unknown arg $arg
+            ;;
+    esac
+done
+
+popd
+
+log "unmounting $MOUNT_POINT"
+umount $MOUNT_POINT
+log "unloading $MODULE"
+rmmod $MODULE

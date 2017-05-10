@@ -9,6 +9,8 @@ MODULE_DESCRIPTION("testelele");
 #define FT_ROOT_INODE    1
 #define FORTYTWOFS_MAGIC 0x4242
 
+// TODO: umount: ida_remove called for id=26 which is not allocated
+
 static int __init ft_init(void)
 {
     int ret = 0;
