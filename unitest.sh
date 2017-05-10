@@ -8,12 +8,13 @@ function u() # $1: testname, $2: test
 {
     NAME="$1"
     shift
+    printf "> \e[36m%s\e[37m\n" "$NAME"
     $* >/dev/null 2>&1
     RET=$?
     if [[ $RET -eq 0 ]]; then
-        printf "\e[32m[OK]\e[37m:%2d > \e[36m%s\e[37m\n" $RET $NAME
+        printf "\e[32m[OK]\e[37m:%2d\n\n" $RET
     else
-        printf "\e[31m[KO]\e[37m:%2d > \e[36m%s\e[37m\n" $RET $NAME
+        printf "\e[31m[KO]\e[37m:%2d\n\n" $RET
     fi
     return $RET
 }
@@ -72,7 +73,7 @@ u "stat subfile"   test -e FILE
 u "rm subfile"     rm FILE
 u "cd"             cd ..
 u "rmdir"          rmdir DIR
-u "write"          echo coucou > FILE
-u "read"           cat FILE
+# u "write"          echo coucou > FILE
+# u "read"           cat FILE
 
 echo " === THE END === "
