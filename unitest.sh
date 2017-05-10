@@ -64,18 +64,23 @@ echo
 
 u "mount"          mount -t fortytwofs -o loop $MOUNT_IMG $MOUNT_POINT || error $?
 u "cd fs"          cd fs                                               || error $?
+
 u "create"         touch FILE
 u "stat file"      test -e FILE
+
 u "mkdir"          mkdir DIR                                           || error $?
 u "test dir"       test -d DIR
 u "cd"             cd DIR                                              || error $?
+
 u "create subfile" touch FILE
 u "stat subfile"   test -e FILE
 u "rm subfile"     rm FILE
+
 u "cd"             cd ..
 u "rmdir"          rmdir DIR
+
 u "write"          echo coucou > FILE
 u "read"           cat FILE
-u "check write"    grep coucou FILE
+u "check write"    grep -q coucou FILE
 
 echo " === THE END === "
