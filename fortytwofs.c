@@ -23,7 +23,7 @@ const struct file_operations ft_file_operations = {
 
 struct super_operations ft_ops = { // TODO: meilleures op: http://lxr.free-electrons.com/source/fs/ext2/super.c#L323
     .statfs       = simple_statfs,
-    .drop_inode   = generic_delete_inode,
+    .drop_inode   = generic_drop_inode,
     .show_options = generic_show_options,
 };
 
@@ -59,5 +59,6 @@ struct file_system_type ft_type = {
     .mount    = ft_mount,
     .kill_sb  = kill_block_super,
     .fs_flags = FS_REQUIRES_DEV,
+    .next     = NULL,
 };
 
