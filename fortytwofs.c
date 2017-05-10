@@ -12,17 +12,13 @@ const struct inode_operations ft_file_inode_operations = {
 };
 
 const struct file_operations ft_file_operations = {
-    .owner        = THIS_MODULE,
-    .release      = simple_attr_release,
-    .read         = simple_attr_read,
-    .write        = simple_attr_write,
-    .llseek       = generic_file_llseek,
     .read_iter    = generic_file_read_iter,
     .write_iter   = generic_file_write_iter,
     .mmap         = generic_file_mmap,
     .fsync        = noop_fsync,
     .splice_read  = generic_file_splice_read,
     .splice_write = iter_file_splice_write,
+    .llseek       = generic_file_llseek,
 };
 
 struct super_operations ft_ops = { // TODO: meilleures op: http://lxr.free-electrons.com/source/fs/ext2/super.c#L323
