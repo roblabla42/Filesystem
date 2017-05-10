@@ -53,16 +53,11 @@ static struct dentry *ft_mount(struct file_system_type *fs_type, int flags, cons
     return mount_bdev(fs_type, flags, dev_name, data, ft_fill_super);
 }
 
-static void ft_kill_sb(struct super_block *sb)
-{
-    kill_litter_super(sb);
-}
-
 struct file_system_type ft_type = {
     .owner    = THIS_MODULE,
     .name     = "fortytwofs",
     .mount    = ft_mount,
-    .kill_sb  = ft_kill_sb,
+    .kill_sb  = kill_block_super,
     .fs_flags = FS_REQUIRES_DEV,
 };
 

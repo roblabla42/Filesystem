@@ -9,23 +9,22 @@ MODULE_DESCRIPTION("testelele");
 #define FT_ROOT_INODE    1
 #define FORTYTWOFS_MAGIC 0x4242
 
-// TODO: umount: ida_remove called for id=26 which is not allocated
 
-static int __init ft_init(void)
+static int __init ftfs_module_init(void)
 {
     int ret = 0;
 
-    LOG("Hi");
+    LOG("registering filesystem");
     ret = register_filesystem(&ft_type);
     return ret;
 }
 
-static void __exit ft_cleanup(void)
+static void __exit ftfs_module_cleanup(void)
 {
-    LOG("Hi");
+    LOG("unregistering filesystem");
     unregister_filesystem(&ft_type);
     return ;
 }
 
-module_init(ft_init);
-module_exit(ft_cleanup);
+module_init(ftfs_module_init);
+module_exit(ftfs_module_cleanup);
