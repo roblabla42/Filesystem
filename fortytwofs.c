@@ -21,9 +21,8 @@ const struct file_operations ft_file_operations = {
     .llseek       = generic_file_llseek,
 };
 
-struct super_operations ft_ops = { // TODO: meilleures op: http://lxr.free-electrons.com/source/fs/ext2/super.c#L323
+struct super_operations ft_ops = {
     .statfs       = simple_statfs,
-    .drop_inode   = generic_drop_inode,
     .show_options = generic_show_options,
 };
 

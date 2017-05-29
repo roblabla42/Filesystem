@@ -110,13 +110,17 @@ pushd $PWD
 
 for arg in $@; do
     case $arg in
-        "sh")
+        ("h"|"-h"|"help"|"--help")
+            echo "$0 sh: to go in the fs"
+            echo "$0 do_test: to test the fs"
+            ;;
+        ("sh")
             do_sh
             ;;
-        "test")
+        ("test")
             do_test
             ;;
-        *)
+        (*)
             err unknown arg $arg
             ;;
     esac
