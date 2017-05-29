@@ -4,12 +4,6 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("ntibi");
 MODULE_DESCRIPTION("testelele");
 
-// FIXME
-// ftfs_module_cleanup: unregistering filesystem
-// ftfs_module_init: registering filesystem
-// blk-mq: bad return on queue: -5
-// blk_update_request: I/O error, dev loop0, sector 0
-
 static int __init ftfs_module_init(void)
 {
     int ret = 0;

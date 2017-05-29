@@ -81,23 +81,23 @@ function do_test()
 
     u "cd fs"          cd fs                                               || error $?
 
-    u "create"         touch FILE
-    u "stat file"      test -e FILE
+    u "create"         touch FILE                                          || error $?
+    # u "stat file"      test -e FILE
 
-    u "mkdir"          mkdir DIR                                           || error $?
-    u "test dir"       test -d DIR
-    u "cd"             cd DIR                                              || error $?
+    # u "mkdir"          mkdir DIR                                           || error $?
+    # u "test dir"       test -d DIR
+    # u "cd"             cd DIR                                              || error $?
 
-    u "create subfile" touch FILE
-    u "stat subfile"   test -e FILE
-    u "rm subfile"     rm FILE
+    # u "create subfile" touch SUBFILE
+    # u "stat subfile"   test -e SUBFILE
+    # u "rm subfile"     rm SUBFILE
 
-    u "cd"             cd ..
-    u "rmdir"          rmdir DIR
+    # u "cd"             cd ..                                               || error $?
+    # u "rmdir"          rmdir DIR
 
-    u "write"          ex -sc 'a|coucou' -cx FILE
-    u "read"           cat FILE
-    u "check write"    grep -q coucou FILE
+    # u "write"          ex -sc 'a|coucou' -cx FILE
+    # u "read"           cat FILE
+    # u "check write"    grep -q coucou FILE
 
     log "=== THE END === "
 }

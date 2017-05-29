@@ -58,6 +58,5 @@ struct file_system_type ft_type = {
     .mount    = ft_mount,
     .kill_sb  = kill_block_super,
     .fs_flags = FS_REQUIRES_DEV,
-    .next     = NULL,
 };
 
