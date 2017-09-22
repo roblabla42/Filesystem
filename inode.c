@@ -83,7 +83,7 @@ struct inode *ft_get_inode(struct super_block *sb, const struct inode *dir, umod
         inc_nlink(inode);
         inode->i_op             = &ft_dir_inode_operations;
         inode->i_mapping->a_ops = &ft_aops;
-        inode->i_fop            = &simple_dir_operations;
+        inode->i_fop            = &ft_dir_file_operations;
         break;
     case S_IFLNK:           LOG("link");
         inode->i_op             = &simple_symlink_inode_operations;
