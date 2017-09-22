@@ -1,13 +1,37 @@
 #include "fortytwofs.h"
+#include <linux/buffer_head.h>
+#include <uapi/linux/magic.h>
+#include <linux/slab.h>
+#include <linux/mpage.h>
+static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create)
+{
+    // A block is 1024 bytes, right ?
+    struct ftfs_inode *ft_inode = (struct ftfs_inode*)inode->i_private;
+    map_bh(bh, inode->i_sb, ft_inode->blocks[iblock]);
+    return 0;
+}
 
+static int ft_readpage(struct file *file, struct page *page)
+{
+    return mpage_readpage(page, ft_get_block);
+}
+
+// This is going to be where the actual reading/writing happens. The kernel will
+// call those functions whenever it needs to pull data from the fs to the
+// pagecache.
 const struct address_space_operations ft_aops = {
-    .readpage       = simple_readpage,
-    .write_begin    = simple_write_begin,
-    .write_end      = simple_write_end,
+    .readpage       = ft_readpage,
+    /*.write_begin    = simple_write_begin,
+    .write_end      = simple_write_end,*/
 };
 
+// TODO changer les operations
+// roblabla: Actually, I don't think we need to. It turns out we're supposed
+// to write the inode in the `super_block->write_inode` callback, and not
+// directly in setattr. And since we're not going to support all the additional
+// features of ext2, the simple_getattr/setattr should do the trick just fine.
 const struct inode_operations ft_file_inode_operations = {
-    .setattr        = simple_setattr, // TODO changer les operations
+    .setattr        = simple_setattr,
     .getattr        = simple_getattr,
 };
 
@@ -15,7 +39,7 @@ const struct file_operations ft_file_operations = {
     .read_iter    = generic_file_read_iter,
     .write_iter   = generic_file_write_iter,
     .mmap         = generic_file_mmap,
-    .fsync        = noop_fsync,
+    .fsync        = generic_file_fsync,
     .splice_read  = generic_file_splice_read,
     .splice_write = iter_file_splice_write,
     .llseek       = generic_file_llseek,
