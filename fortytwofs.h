@@ -12,7 +12,7 @@
 #define FORTYTWOFS_MAGIC 0x4242
 
 
-struct inode *ft_get_inode(struct super_block *sb, const struct inode *dir, umode_t mode, ino_t ino);
+struct inode *ft_get_inode(struct super_block *sb, ino_t ino);
 
 // # On-disk structures
 

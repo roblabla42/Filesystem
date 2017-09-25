@@ -19,7 +19,7 @@ static const struct inode_operations ft_dir_inode_operations;
  * Gets an inode from an sb and ino. If it doesn't already exist, read the data
  * from the sb.
  */
-struct inode *ft_get_inode(struct super_block *sb, const struct inode *dir, umode_t mode, ino_t ino)
+struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
 {
     struct inode *inode;
     struct buffer_head *bh;
@@ -103,7 +103,8 @@ failed:
 
 static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
-    struct inode *inode = ft_get_inode(dir->i_sb, dir, mode, get_next_ino());
+    // TODO: create inode
+    struct inode *inode = ft_get_inode(dir->i_sb, get_next_ino());
 
     if (!inode)
         return -ENOSPC;
