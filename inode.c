@@ -39,7 +39,7 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     ret = -ENOMEM;
 
     group = (struct ftfs_block_group*)((struct ftfs_fs_info*)sb->s_fs_info)->group_desc;
-    offset = ino * sizeof(struct ftfs_inode);
+    offset = (ino - 1) * sizeof(struct ftfs_inode);
     LOG("Getting inode from block %d, offset %d, blocksize %ld", group->inode_table_block, offset, sb->s_blocksize);
     LOG("block nbr %ld", group->inode_table_block + (offset / sb->s_blocksize));
     if ((bh = sb_bread(sb, group->inode_table_block + (offset / sb->s_blocksize))) == NULL)

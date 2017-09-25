@@ -8,7 +8,7 @@
 
 // We cannot define FT_ROOT_INODE to 0, because it signifies the absence of an
 // inode, similar to NULL.
-#define FT_ROOT_INODE    1
+#define FT_ROOT_INODE    2
 #define FORTYTWOFS_MAGIC 0x4242
 
 
