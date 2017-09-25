@@ -57,7 +57,8 @@ struct ftfs_inode {
 struct ftfs_dir {
     __le32 inode;
     __le16 len;
-    __le16 name_len;
+    __u8   name_len;
+    __u8   unused;
     char   name[];
 };
 

@@ -124,9 +124,52 @@ static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, b
     return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
 }
 
+struct lookup_ctx {
+    ino_t ino;
+    const char *name;
+    size_t name_len;
+};
+
+static int lookup_emit(struct ftfs_dir *dir, void *data)
+{
+    struct lookup_ctx *ctx = (struct lookup_ctx*)data;
+    if (dir->name_len == ctx->name_len &&
+            memcmp(dir->name, ctx->name, dir->name_len) == 0) {
+        ctx->ino = dir->inode;
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+static struct dentry *ft_lookup(struct inode *dir, struct dentry *dentry,
+        unsigned flags)
+{
+    struct lookup_ctx ctx = {
+        .ino = 0,
+        .name = dentry->d_name.name,
+        .name_len = dentry->d_name.len
+    };
+    struct inode *inode;
+
+    LOG("Looking up %s in inode %ld", dentry->d_name.name, dir->i_ino);
+    ft_iterate(dir, lookup_emit, NULL, &ctx);
+    if (ctx.ino == 0) {
+        return NULL;
+    }
+    LOG("Got inode number %ld", ctx.ino);
+    inode = ft_get_inode(dir->i_sb, ctx.ino);
+    if (IS_ERR(inode))
+        return ERR_PTR(PTR_ERR(inode));
+    // TODO: aufs use d_add and returns NULL. But everywhere I look, people seem
+    // to be using d_splice_alias. The documentation is a bit lightweight. I'd
+    // like to understand what it does better.
+    return d_splice_alias(inode, dentry);
+}
+
 static const struct inode_operations ft_dir_inode_operations = {
     //.create     = ftfs_create,
-    .lookup     = simple_lookup,
+    .lookup     = ft_lookup,
     .link       = simple_link,
     .unlink     = simple_unlink,
     /* .symlink    = ftfs_symlink, [> TODO <] */
