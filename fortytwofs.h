@@ -8,11 +8,16 @@
 
 // We cannot define FT_ROOT_INODE to 0, because it signifies the absence of an
 // inode, similar to NULL.
-#define FT_ROOT_INODE    1
+#define FT_ROOT_INODE    2
 #define FORTYTWOFS_MAGIC 0x4242
 
 
-struct inode *ft_get_inode(struct super_block *sb, const struct inode *dir, umode_t mode, ino_t ino);
+struct inode *ft_get_inode(struct super_block *sb, ino_t ino);
+
+struct ftfs_dir;
+typedef int (*ft_iterator)(struct ftfs_dir*, void*);
+
+int ft_iterate(struct inode *inode, ft_iterator it, loff_t *pos, void *data);
 
 // # On-disk structures
 
@@ -52,7 +57,8 @@ struct ftfs_inode {
 struct ftfs_dir {
     __le32 inode;
     __le16 len;
-    __le16 name_len;
+    __u8   name_len;
+    __u8   unused;
     char   name[];
 };
 
