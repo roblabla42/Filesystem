@@ -3,20 +3,32 @@
 MNT=/mnt/ftfs
 MOD=ftfs
 
+function do_unmount()
+{
+    mountpoint /mnt/ftfs >/dev/null &&
+        sudo umount $MNT
+}
+
+function do_mount()
+{
+    sudo mount -t $1 /dev/loop0 $MNT
+}
+
 for arg in $@; do
     case $arg in
         ("init")
             sudo losetup -f img
             ;;
+        ("u")
+            do_unmount
+            ;;
         ("ext2")
-            mountpoint /mnt/ftfs >/dev/null &&
-                sudo umount $MNT
-            sudo mount -t ext2 /dev/loop0 $MNT
+            do_unmount
+            do_mount ext2
             ;;
         ("ftfs")
-            mountpoint /mnt/ftfs >/dev/null &&
-                sudo umount $MNT
-            sudo mount -t fortytwofs /dev/loop0 $MNT
+            do_unmount
+            do_mount fortytwofs
             ;;
         ("mod")
             lsmod | grep $MOD &&
