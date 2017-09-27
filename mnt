@@ -14,8 +14,18 @@ function do_mount()
     sudo mount -t $1 /dev/loop0 $MNT
 }
 
+
+function usage()
+{
+    echo "usage $1 (init|u|ext2|ftfs|mod)+"
+}
+
+
 for arg in $@; do
     case $arg in
+        ("help"|"-h")
+            usage $0
+            ;;
         ("init")
             sudo losetup -f img
             ;;
@@ -37,7 +47,8 @@ for arg in $@; do
                 sudo insmod $MOD.ko
             ;;
         (*)
-            err unknown arg $arg
+            echo unknown arg $arg
+            usage $0
             ;;
     esac
 done
