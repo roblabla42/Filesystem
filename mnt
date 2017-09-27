@@ -34,7 +34,7 @@ for arg in $@; do
             lsmod | grep $MOD &&
                 sudo rmmod $MOD
             make &&
-                insmod $MOD.ko
+                sudo insmod $MOD.ko
             ;;
         (*)
             err unknown arg $arg
