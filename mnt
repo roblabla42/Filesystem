@@ -1,0 +1,31 @@
+#!/bin/zsh
+
+MNT=/mnt/ftfs
+MOD=ftfs
+
+for arg in $@; do
+    case $arg in
+        ("init")
+            sudo losetup -f img
+            ;;
+        ("ext2")
+            mountpoint /mnt/ftfs >/dev/null &&
+                sudo umount $MNT
+            sudo mount -t ext2 /dev/loop0 $MNT
+            ;;
+        ("ftfs")
+            mountpoint /mnt/ftfs >/dev/null &&
+                sudo umount $MNT
+            sudo mount -t fortytwofs /dev/loop0 $MNT
+            ;;
+        ("mod")
+            lsmod | grep $MOD &&
+                sudo rmmod $MOD
+            make &&
+                insmod $MOD.ko
+            ;;
+        (*)
+            err unknown arg $arg
+            ;;
+    esac
+done
