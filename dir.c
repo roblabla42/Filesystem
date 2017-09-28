@@ -52,7 +52,7 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
             }
             // dir->inode == 0 means the entry is "unused". This can happen
             // when using rm.
-            if (!dir->inode == 0) {
+            if (dir->inode != 0) {
                 LOG("%.*s is inode %d", dir->name_len, dir->name, dir->inode);
                 if (!emit(dir, data)) {
                     ft_put_page(page);
