@@ -17,7 +17,7 @@ function do_mount()
 
 function usage()
 {
-    echo "usage $1 (init|u|ext2|ftfs|mod)+"
+    echo "usage $1 (help|init|u|ext2|ftfs|mod|sh)+"
 }
 
 
@@ -45,6 +45,11 @@ for arg in $@; do
                 sudo rmmod $MOD
             make &&
                 sudo insmod $MOD.ko
+            ;;
+        ("sh")
+            pushd $MNT
+            sudo bash
+            popd
             ;;
         (*)
             echo unknown arg $arg
