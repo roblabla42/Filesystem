@@ -3,11 +3,64 @@
 #include <uapi/linux/magic.h>
 #include <linux/slab.h>
 #include <linux/mpage.h>
+
 static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create)
 {
-    // A block is 1024 bytes, right ?
     struct ftfs_inode *ft_inode = (struct ftfs_inode*)inode->i_private;
-    map_bh(bh, inode->i_sb, ft_inode->blocks[iblock]);
+
+    LOG("getting block %lu", iblock);
+    if (iblock < 12)
+    {
+        LOG("   direct blocks[%lu]", iblock);
+        map_bh(bh, inode->i_sb, ft_inode->blocks[iblock]);
+        return 0;
+    }
+    iblock -= 12;
+    if (iblock < 0x100)
+    {
+        struct buffer_head *ibh;
+
+        LOG("   indirect1 [12][%lu]", iblock);
+        ibh = sb_bread(inode->i_sb, ft_inode->blocks[12]);
+        map_bh(bh, inode->i_sb, ((__le32*)ibh->b_data)[iblock]);
+        brelse(ibh);
+        return 0;
+    }
+    iblock -= 0x100;
+    if (iblock < 0x10000)
+    {
+        struct buffer_head *ibh;
+        __le32 i1, i2;
+
+        LOG("   indirect2 [13][%lu][%lu]", iblock >> 8, iblock & 0xff);
+        ibh = sb_bread(inode->i_sb, ft_inode->blocks[13]);
+        i1 = ((__le32*)ibh->b_data)[iblock >> 8]; // 0xXX00
+        brelse(ibh);
+        ibh = sb_bread(inode->i_sb, i1);
+        i2 = ((__le32*)ibh->b_data)[iblock & 0xff]; // 0x00XX
+        map_bh(bh, inode->i_sb, i2);
+        brelse(ibh);
+        return 0;
+    }
+    iblock -= 0x10000;
+    if (iblock < 0x1000000)
+    {
+        struct buffer_head *ibh;
+        __le32 i1, i2, i3;
+
+        LOG("   indirect3 [14][%lu][%lu][%lu]", iblock >> 16, (iblock >> 8) & 0xff, iblock & 0xff);
+        ibh = sb_bread(inode->i_sb, ft_inode->blocks[14]);
+        i1 = ((__le32*)ibh->b_data)[iblock >> 16]; // 0xXX0000
+        brelse(ibh);
+        ibh = sb_bread(inode->i_sb, i1);
+        i2 = ((__le32*)ibh->b_data)[(iblock >> 8) & 0xff]; // 0x00XX00
+        brelse(ibh);
+        ibh = sb_bread(inode->i_sb, i2);
+        i3 = ((__le32*)ibh->b_data)[iblock & 0xff]; // 0x0000XX
+        map_bh(bh, inode->i_sb, ((__le32*)ibh->b_data)[iblock & 0xff]);
+        brelse(ibh);
+        return 0;
+    }
     return 0;
 }
 
