@@ -13,6 +13,7 @@
 
 
 struct inode *ft_get_inode(struct super_block *sb, ino_t ino);
+int ft_write_inode(struct inode *inode, struct writeback_control *wbc);
 
 struct ftfs_dir;
 typedef int (*ft_iterator)(struct ftfs_dir*, void*);
