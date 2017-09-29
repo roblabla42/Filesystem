@@ -1,5 +1,6 @@
 #include "fortytwofs.h"
 #include <linux/buffer_head.h>
+#include <linux/slab.h>
 
 static const struct inode_operations ft_dir_inode_operations;
 
@@ -26,6 +27,7 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     struct ftfs_block_group *group;
     struct ftfs_inode *ft_inode;
     int offset;
+    struct ftfs_inode_info *ft_inode_info;
     int ret;
 
     LOG("Getting inode %ld", ino);
@@ -55,10 +57,12 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     // inode. The other is to implement super_block->alloc_inode to allocate
     // a structure containing both the struct inode and the extra data, and then
     // using container_of. For simplicity's sake, let's use i_private for now.
-    //kalloc(sizeof(ftfs_inode_info*), GFP_KERNEL);
+    //
+    // TODO: figure out how to delete this
+    ft_inode_info = kmalloc(sizeof(struct ftfs_inode_info), GFP_KERNEL);
+    memcpy(ft_inode_info->blocks, ft_inode->blocks, sizeof(ft_inode->blocks));
+    inode->i_private = ft_inode_info;
 
-    // TODO: Figure out when to clean this up
-    inode->i_private = ft_inode;
     inode->i_mode = ft_inode->mode;
     inode->i_size = ft_inode->size;
 
@@ -93,6 +97,7 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
         break;
     }
 
+    brelse(bh);
     unlock_new_inode(inode);
     return inode;
 

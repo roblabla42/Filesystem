@@ -74,6 +74,10 @@ struct ftfs_fs_info {
     struct buffer_head *group_desc_bh;
 };
 
+struct ftfs_inode_info {
+    int blocks[15];
+};
+
 extern       struct file_system_type         ft_type;
 extern const struct address_space_operations ft_aops;
 extern const struct inode_operations         ft_file_inode_operations;
