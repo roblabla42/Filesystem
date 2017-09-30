@@ -33,7 +33,7 @@ struct ftfs_super_block {
 // We only have one of those in ftfs, but keep the structure around to stay
 // compatible with ext2
 struct ftfs_block_group {
-    __le32 unused1;
+    __le32 block_bitmap_block;
     __le32 unused2;
     __le32 inode_table_block;
 };

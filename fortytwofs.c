@@ -4,17 +4,52 @@
 #include <linux/slab.h>
 #include <linux/mpage.h>
 
+static int ft_acquire_block(struct super_block *sb) {
+    struct ftfs_fs_info *fsinfo;
+    struct buffer_head *bh;
+    unsigned long *bitmap;
+    int next;
+
+    fsinfo = sb->s_fs_info;
+    // TODO: Figure out what map_bh really does.
+    // I've found that bread/brelse... come from BSD world actually. it's called
+    // the buffercache : http://man.openbsd.org/bread.9
+    //
+    // Linux kernel implements a variant of it, but I'm not too sure about how
+    // everything works.
+    // TODO: I should lock this for sure !
+    // TODO: getblk ?
+    // TODO: Set to 0 ?
+    LOG("Reading block %d", fsinfo->group_desc->block_bitmap_block);
+    if ((bh = sb_bread(sb, fsinfo->group_desc->block_bitmap_block)) == NULL)
+        // Failed to read. Critical error.
+        return -EIO;
+    bitmap = (unsigned long*)bh->b_data;
+    next = find_next_zero_bit(bitmap, bh->b_size * 8, 0);
+    if (next < bh->b_size * 8) {
+        // Make sure nobody else claims our buffer !
+        bh->b_data[next / 8] |= 1 << (next % 8);
+        mark_buffer_dirty(bh);
+    }
+    brelse(bh);
+    return next;
+}
+
 static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create)
 {
     struct ftfs_inode *ft_inode = (struct ftfs_inode*)inode->i_private;
+    int *block = 0;
+    int res = 0;
 
     LOG("getting block %lu", iblock);
     if (iblock < 12)
     {
+        // Only support allocation for direct blocks for now
         LOG("   direct blocks[%lu]", iblock);
-        map_bh(bh, inode->i_sb, ft_inode->blocks[iblock]);
-        return 0;
+        block = &ft_inode->blocks[iblock];
+        goto got_block;
     }
+    // TODO: Use ft_allocate_block to allocate missing indirect* blocks.
     iblock -= 12;
     if (iblock < 0x100)
     {
@@ -62,6 +97,22 @@ static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head
         return 0;
     }
     return 0;
+got_block:
+    if (block == NULL || (*block == 0 && !create)) {
+        return (-EIO);
+    }
+    if (*block == 0) {
+        if ((res = ft_acquire_block(inode->i_sb)) < 0)
+            return res;
+        // Update the inode with the newly acquired block
+        LOG("Allocated block %d", res);
+        *block = res;
+    }
+    // mark inode as dirty (because we added a direct block. Eventually have
+    // to only do it if we actualy touch a direct block)
+    mark_inode_dirty(inode);
+    map_bh(bh, inode->i_sb, *block);
+    return 0;
 }
 
 static int ft_readpage(struct file *file, struct page *page)
@@ -69,13 +120,26 @@ static int ft_readpage(struct file *file, struct page *page)
     return mpage_readpage(page, ft_get_block);
 }
 
+static int ft_writepage(struct page *page, struct writeback_control *wbc)
+{
+    return block_write_full_page(page, ft_get_block, wbc);
+}
+
+static int ft_write_begin(struct file *file, struct address_space *mapping,
+        loff_t pos, unsigned len, unsigned flags, struct page **pagep,
+        void **fsdata)
+{
+    return block_write_begin(mapping, pos, len, flags, pagep, ft_get_block);
+}
+
 // This is going to be where the actual reading/writing happens. The kernel will
 // call those functions whenever it needs to pull data from the fs to the
 // pagecache.
 const struct address_space_operations ft_aops = {
     .readpage       = ft_readpage,
-    /*.write_begin    = simple_write_begin,
-    .write_end      = simple_write_end,*/
+    .writepage      = ft_writepage,
+    .write_begin    = ft_write_begin,
+    .write_end      = generic_write_end
 };
 
 // TODO changer les operations
