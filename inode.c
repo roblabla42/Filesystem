@@ -1,5 +1,6 @@
 #include "fortytwofs.h"
 #include <linux/buffer_head.h>
+#include <linux/slab.h>
 
 static const struct inode_operations ft_dir_inode_operations;
 
@@ -19,13 +20,30 @@ static const struct inode_operations ft_dir_inode_operations;
  * Gets an inode from an sb and ino. If it doesn't already exist, read the data
  * from the sb.
  */
+
+static int get_raw_inode(struct super_block *sb, ino_t ino,
+        struct ftfs_inode **inode, struct buffer_head **bh)
+{
+    struct ftfs_block_group *group;
+    int offset;
+
+    group = (struct ftfs_block_group*)((struct ftfs_fs_info*)sb->s_fs_info)->group_desc;
+    offset = (ino - 1) * sizeof(struct ftfs_inode);
+    LOG("Getting inode from block %d, offset %d, blocksize %ld", group->inode_table_block, offset, sb->s_blocksize);
+    LOG("block nbr %ld", group->inode_table_block + (offset / sb->s_blocksize));
+    if ((*bh = sb_bread(sb, group->inode_table_block + (offset / sb->s_blocksize))) == NULL)
+        return -ENOMEM;
+    LOG("offset %ld on %ld", offset % sb->s_blocksize, (*bh)->b_size);
+    *inode = (struct ftfs_inode*)((*bh)->b_data + (offset % sb->s_blocksize));
+    return 0;
+}
+
 struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
 {
     struct inode *inode;
     struct buffer_head *bh;
-    struct ftfs_block_group *group;
     struct ftfs_inode *ft_inode;
-    int offset;
+    struct ftfs_inode_info *ft_inode_info;
     int ret;
 
     LOG("Getting inode %ld", ino);
@@ -36,16 +54,8 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
         return inode;
     LOG("New inode %ld", ino);
 
-    ret = -ENOMEM;
-
-    group = (struct ftfs_block_group*)((struct ftfs_fs_info*)sb->s_fs_info)->group_desc;
-    offset = (ino - 1) * sizeof(struct ftfs_inode);
-    LOG("Getting inode from block %d, offset %d, blocksize %ld", group->inode_table_block, offset, sb->s_blocksize);
-    LOG("block nbr %ld", group->inode_table_block + (offset / sb->s_blocksize));
-    if ((bh = sb_bread(sb, group->inode_table_block + (offset / sb->s_blocksize))) == NULL)
+    if ((ret = get_raw_inode(sb, ino, &ft_inode, &bh)) != 0)
         goto failed;
-    LOG("offset %ld on %ld", offset % sb->s_blocksize, bh->b_size);
-    ft_inode = (struct ftfs_inode*)(bh->b_data + (offset % sb->s_blocksize));
 
     // Initialize inode. There are quite a few already-initialized fields. You
     // can check with by looking at inode_init_always from fs/inode.c
@@ -55,10 +65,12 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     // inode. The other is to implement super_block->alloc_inode to allocate
     // a structure containing both the struct inode and the extra data, and then
     // using container_of. For simplicity's sake, let's use i_private for now.
-    //kalloc(sizeof(ftfs_inode_info*), GFP_KERNEL);
+    //
+    // TODO: figure out how to delete this
+    ft_inode_info = kmalloc(sizeof(struct ftfs_inode_info), GFP_KERNEL);
+    memcpy(ft_inode_info->blocks, ft_inode->blocks, sizeof(ft_inode->blocks));
+    inode->i_private = ft_inode_info;
 
-    // TODO: Figure out when to clean this up
-    inode->i_private = ft_inode;
     inode->i_mode = ft_inode->mode;
     inode->i_size = ft_inode->size;
 
@@ -93,12 +105,36 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
         break;
     }
 
+    brelse(bh);
     unlock_new_inode(inode);
     return inode;
 
 failed:
     iget_failed(inode);
     return ERR_PTR(ret);
+}
+
+int ft_write_inode(struct inode *inode, struct writeback_control *wbc)
+{
+    struct ftfs_inode *ft_inode;
+    struct buffer_head *bh;
+    struct ftfs_inode_info *inode_info;
+    int ret;
+
+    if ((ret = get_raw_inode(inode->i_sb, inode->i_ino, &ft_inode, &bh)) != 0)
+        return ret;
+    inode_info = (struct ftfs_inode_info*)inode->i_private;
+    ft_inode->mode = inode->i_mode;
+    ft_inode->uid = i_uid_read(inode);
+    ft_inode->gid = i_gid_read(inode);
+    ft_inode->size = inode->i_size;
+    ft_inode->atime = inode->i_atime.tv_sec;
+    ft_inode->ctime = inode->i_ctime.tv_sec;
+    ft_inode->mtime = inode->i_mtime.tv_sec;
+    memcpy(ft_inode->blocks, inode_info->blocks, sizeof(ft_inode->blocks));
+    mark_buffer_dirty(bh);
+    brelse(bh);
+    return 0;
 }
 
 static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)

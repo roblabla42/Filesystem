@@ -37,7 +37,7 @@ static int ft_acquire_block(struct super_block *sb) {
 
 static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create)
 {
-    struct ftfs_inode *ft_inode = (struct ftfs_inode*)inode->i_private;
+    struct ftfs_inode_info *ft_inode = (struct ftfs_inode_info*)inode->i_private;
     int *block = 0;
     int res = 0;
 
@@ -256,6 +256,7 @@ struct file_system_type ft_type = {
 
 const struct super_operations ft_ops = {
     .statfs       = simple_statfs,
+    .write_inode = ft_write_inode,
     .show_options = generic_show_options,
     .put_super = ft_put_super,
 };
