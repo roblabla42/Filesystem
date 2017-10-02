@@ -269,7 +269,7 @@ struct file_system_type ft_type = {
 const struct super_operations ft_ops = {
     .statfs       = simple_statfs,
     .write_inode = ft_write_inode,
-    .show_options = generic_show_options,
+    //.show_options = generic_show_options,
     .put_super = ft_put_super,
 };
 
