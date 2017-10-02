@@ -57,6 +57,8 @@ static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head
 
         LOG("   indirect1 [12][%lu]", iblock);
         ibh = sb_bread(inode->i_sb, ft_inode->blocks[12]);
+        if (!ibh)
+            return -ENOMEM;
         map_bh(bh, inode->i_sb, ((__le32*)ibh->b_data)[iblock]);
         brelse(ibh);
         return 0;
@@ -69,9 +71,13 @@ static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head
 
         LOG("   indirect2 [13][%lu][%lu]", iblock >> 8, iblock & 0xff);
         ibh = sb_bread(inode->i_sb, ft_inode->blocks[13]);
+        if (!ibh)
+            return -ENOMEM;
         i1 = ((__le32*)ibh->b_data)[iblock >> 8]; // 0xXX00
         brelse(ibh);
         ibh = sb_bread(inode->i_sb, i1);
+        if (!ibh)
+            return -ENOMEM;
         i2 = ((__le32*)ibh->b_data)[iblock & 0xff]; // 0x00XX
         map_bh(bh, inode->i_sb, i2);
         brelse(ibh);
@@ -85,12 +91,18 @@ static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head
 
         LOG("   indirect3 [14][%lu][%lu][%lu]", iblock >> 16, (iblock >> 8) & 0xff, iblock & 0xff);
         ibh = sb_bread(inode->i_sb, ft_inode->blocks[14]);
+        if (!ibh)
+            return -ENOMEM;
         i1 = ((__le32*)ibh->b_data)[iblock >> 16]; // 0xXX0000
         brelse(ibh);
         ibh = sb_bread(inode->i_sb, i1);
+        if (!ibh)
+            return -ENOMEM;
         i2 = ((__le32*)ibh->b_data)[(iblock >> 8) & 0xff]; // 0x00XX00
         brelse(ibh);
         ibh = sb_bread(inode->i_sb, i2);
+        if (!ibh)
+            return -ENOMEM;
         i3 = ((__le32*)ibh->b_data)[iblock & 0xff]; // 0x0000XX
         map_bh(bh, inode->i_sb, ((__le32*)ibh->b_data)[iblock & 0xff]);
         brelse(ibh);
