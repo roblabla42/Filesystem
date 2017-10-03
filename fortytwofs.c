@@ -18,100 +18,159 @@ static int ft_acquire_block(struct super_block *sb) {
     // Linux kernel implements a variant of it, but I'm not too sure about how
     // everything works.
     // TODO: I should lock this for sure !
-    // TODO: getblk ?
-    // TODO: Set to 0 ?
-    LOG("Reading block %d", fsinfo->group_desc->block_bitmap_block);
-    if ((bh = sb_bread(sb, fsinfo->group_desc->block_bitmap_block)) == NULL)
+    LOG("Reading BGD @ %d", fsinfo->group_desc->block_bitmap_block);
+    if ((bh = sb_bread(sb, fsinfo->group_desc->block_bitmap_block)) == NULL) {
+        LOG("Failed to read BGD !");
         // Failed to read. Critical error.
         return -EIO;
+    }
     bitmap = (unsigned long*)bh->b_data;
     next = find_next_zero_bit(bitmap, bh->b_size * 8, 0);
     if (next < bh->b_size * 8) {
         // Make sure nobody else claims our buffer !
         bh->b_data[next / 8] |= 1 << (next % 8);
+        LOG("Reserved block %d", next);
         mark_buffer_dirty(bh);
     }
     brelse(bh);
+    // We don't zero-out the block here ! Instead, we expect the user to call
+    // set_buffer_new, which asks the kernel to zero-out the buffer when it's
+    // loaded into the page cache.
+    //
+    // TODO: We need to change this. The behavior is almost certainly wrong in
+    // edge cases.
     return next;
+}
+
+#define FT_ACQUIRE_BLOCK(sb, blockptr, create, new, dirty, ptr) (create) ? ft_get_or_allocate_block((sb), (blockptr), new, (void(*)(void*))(dirty), (ptr)) : *(blockptr)
+
+static int ft_get_or_allocate_block(struct super_block *sb, int *block, int *new_out, void (*mark_dirty)(void*), void *dirty_data) {
+    int res;
+
+    if (new_out)
+        *new_out = 0;
+    if (*block == 0) {
+        if ((res = ft_acquire_block(sb)) < 0)
+            return res;
+        *block = res;
+        if (new_out)
+            *new_out = 1;
+        mark_dirty(dirty_data);
+    }
+    return *block;
 }
 
 static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create)
 {
     struct ftfs_inode_info *ft_inode = (struct ftfs_inode_info*)inode->i_private;
-    int *block = 0;
-    int res = 0;
+    int block = 0;
+    int new = 0;
 
-    LOG("getting block %lu", iblock);
+    LOG("getting block %lu (%s)", iblock, create ? "create" : "read");
     if (iblock < 12)
     {
         // Only support allocation for direct blocks for now
         LOG("   direct blocks[%lu]", iblock);
-        block = &ft_inode->blocks[iblock];
-        goto got_block;
+        // If block is < 0, it's an error. If it's 0, we are read-only and block doesn't exist yet
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, &ft_inode->blocks[iblock], create, &new, mark_inode_dirty, inode)) <= 0)
+            return block;
+        LOG("       Lvl0 block[%d]", block);
+        map_bh(bh, inode->i_sb, block);
+        if (new)
+            set_buffer_new(bh);
+        return 0;
     }
-    // TODO: Use ft_allocate_block to allocate missing indirect* blocks.
     iblock -= 12;
     if (iblock < 0x100)
     {
         struct buffer_head *ibh;
 
         LOG("   indirect1 [12][%lu]", iblock);
-        ibh = sb_bread(inode->i_sb, ft_inode->blocks[12]);
-        map_bh(bh, inode->i_sb, ((__le32*)ibh->b_data)[iblock]);
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, &ft_inode->blocks[12], create, NULL, mark_inode_dirty, inode)) <= 0)
+            return block;
+        LOG("       Lvl0 block[%d]", block);
+        ibh = sb_bread(inode->i_sb, block);
+        if (!ibh)
+            return -ENOMEM;
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, &((__le32*)ibh->b_data)[iblock], create, &new, mark_buffer_dirty, ibh)) <= 0)
+            return block;
+        LOG("       Lvl1 block[%d]", block);
         brelse(ibh);
+        map_bh(bh, inode->i_sb, block);
+        if (new)
+            set_buffer_new(bh);
         return 0;
     }
     iblock -= 0x100;
     if (iblock < 0x10000)
     {
         struct buffer_head *ibh;
-        __le32 i1, i2;
+        __le32 *i1, *i2;
 
         LOG("   indirect2 [13][%lu][%lu]", iblock >> 8, iblock & 0xff);
-        ibh = sb_bread(inode->i_sb, ft_inode->blocks[13]);
-        i1 = ((__le32*)ibh->b_data)[iblock >> 8]; // 0xXX00
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, &ft_inode->blocks[13], create, NULL, mark_inode_dirty, inode)) <= 0)
+            return block;
+        LOG("       Lvl0 block[%d]", block);
+        ibh = sb_bread(inode->i_sb, block);
+        if (!ibh)
+            return -ENOMEM;
+        i1 = &((__le32*)ibh->b_data)[iblock >> 8]; // 0xXX00
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, i1, create, NULL, mark_buffer_dirty, ibh)) <= 0)
+            return block;
+        LOG("       Lvl1 block[%d]", block);
         brelse(ibh);
-        ibh = sb_bread(inode->i_sb, i1);
-        i2 = ((__le32*)ibh->b_data)[iblock & 0xff]; // 0x00XX
-        map_bh(bh, inode->i_sb, i2);
+        ibh = sb_bread(inode->i_sb, block);
+        if (!ibh)
+            return -ENOMEM;
+        i2 = &((__le32*)ibh->b_data)[iblock & 0xff]; // 0x00XX
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, i2, create, &new, mark_buffer_dirty, ibh)) <= 0)
+            return block;
+        LOG("       Lvl2 block[%d]", block);
         brelse(ibh);
+        map_bh(bh, inode->i_sb, block);
+        if (new)
+            set_buffer_new(bh);
         return 0;
     }
     iblock -= 0x10000;
     if (iblock < 0x1000000)
     {
         struct buffer_head *ibh;
-        __le32 i1, i2, i3;
+        __le32 *i1, *i2, *i3;
 
         LOG("   indirect3 [14][%lu][%lu][%lu]", iblock >> 16, (iblock >> 8) & 0xff, iblock & 0xff);
-        ibh = sb_bread(inode->i_sb, ft_inode->blocks[14]);
-        i1 = ((__le32*)ibh->b_data)[iblock >> 16]; // 0xXX0000
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, &ft_inode->blocks[14], create, NULL, mark_inode_dirty, inode)) <= 0)
+            return block;
+        LOG("       Lvl0 block[%d]", block);
+        ibh = sb_bread(inode->i_sb, block);
+        if (!ibh)
+            return -ENOMEM;
+        i1 = &((__le32*)ibh->b_data)[iblock >> 16]; // 0xXX0000
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, i1, create, NULL, mark_buffer_dirty, ibh)) <= 0)
+            return block;
+        LOG("       Lvl1 block[%d]", block);
         brelse(ibh);
-        ibh = sb_bread(inode->i_sb, i1);
-        i2 = ((__le32*)ibh->b_data)[(iblock >> 8) & 0xff]; // 0x00XX00
+        ibh = sb_bread(inode->i_sb, block);
+        if (!ibh)
+            return -ENOMEM;
+        i2 = &((__le32*)ibh->b_data)[(iblock >> 8) & 0xff]; // 0x00XX00
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, i2, create, NULL, mark_buffer_dirty, ibh)) <= 0)
+            return block;
+        LOG("       Lvl2 block[%d]", block);
         brelse(ibh);
-        ibh = sb_bread(inode->i_sb, i2);
-        i3 = ((__le32*)ibh->b_data)[iblock & 0xff]; // 0x0000XX
-        map_bh(bh, inode->i_sb, ((__le32*)ibh->b_data)[iblock & 0xff]);
+        ibh = sb_bread(inode->i_sb, block);
+        if (!ibh)
+            return -ENOMEM;
+        i3 = &((__le32*)ibh->b_data)[iblock & 0xff]; // 0x0000XX
+        if ((block = FT_ACQUIRE_BLOCK(inode->i_sb, i3, create, &new, mark_buffer_dirty, ibh)) <= 0)
+            return block;
+        LOG("       Lvl3 block[%d]", block);
         brelse(ibh);
+        map_bh(bh, inode->i_sb, block);
+        if (new)
+            set_buffer_new(bh);
         return 0;
     }
-    return 0;
-got_block:
-    if (block == NULL || (*block == 0 && !create)) {
-        return (-EIO);
-    }
-    if (*block == 0) {
-        if ((res = ft_acquire_block(inode->i_sb)) < 0)
-            return res;
-        // Update the inode with the newly acquired block
-        LOG("Allocated block %d", res);
-        *block = res;
-    }
-    // mark inode as dirty (because we added a direct block. Eventually have
-    // to only do it if we actualy touch a direct block)
-    mark_inode_dirty(inode);
-    map_bh(bh, inode->i_sb, *block);
     return 0;
 }
 
@@ -257,7 +316,7 @@ struct file_system_type ft_type = {
 const struct super_operations ft_ops = {
     .statfs       = simple_statfs,
     .write_inode = ft_write_inode,
-    .show_options = generic_show_options,
+    //.show_options = generic_show_options,
     .put_super = ft_put_super,
 };
 
