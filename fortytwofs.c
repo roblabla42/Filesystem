@@ -60,7 +60,7 @@ static int ft_get_or_allocate_block(struct super_block *sb, int *block, int *new
     return *block;
 }
 
-static int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create)
+int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create)
 {
     struct ftfs_inode_info *ft_inode = (struct ftfs_inode_info*)inode->i_private;
     int block = 0;
