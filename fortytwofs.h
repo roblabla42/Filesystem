@@ -12,6 +12,7 @@
 #define FORTYTWOFS_MAGIC 0x4242
 
 
+int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create);
 struct inode *ft_get_inode(struct super_block *sb, ino_t ino);
 int ft_write_inode(struct inode *inode, struct writeback_control *wbc);
 
@@ -19,6 +20,7 @@ struct ftfs_dir;
 typedef int (*ft_iterator)(struct ftfs_dir*, void*);
 
 int ft_iterate(struct inode *inode, ft_iterator it, loff_t *pos, void *data);
+int ft_insert_inode_in_dir(struct inode *dir, struct dentry *dentry, ino_t ino);
 
 // # On-disk structures
 
@@ -35,7 +37,7 @@ struct ftfs_super_block {
 // compatible with ext2
 struct ftfs_block_group {
     __le32 block_bitmap_block;
-    __le32 unused2;
+    __le32 inode_bitmap_block;
     __le32 inode_table_block;
 };
 
@@ -49,7 +51,7 @@ struct ftfs_inode {
     __le32 mtime;
     __le32 dtime;
     __le16 gid;
-    __le16 unused1;
+    __le16 nlinks;
     __le32 unused2[3];
     __le32 blocks[15]; // 0-11 dir, 12 ind, 13 d-ind, 14 t-ind.
     __le32 unused5[7];

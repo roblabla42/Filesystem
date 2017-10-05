@@ -1,5 +1,6 @@
 #include "fortytwofs.h"
 #include <linux/pagemap.h>
+#include <linux/buffer_head.h>
 
 // Returns the page nbr of that inode, and make sure it is mapped in memory !
 static struct page *ft_get_page(struct inode *inode, int nbr)
@@ -16,6 +17,84 @@ static void ft_put_page(struct page *page)
 {
     kunmap(page);
     put_page(page);
+}
+
+int ft_insert_inode_in_dir(struct inode *inode, struct dentry *dentry, ino_t ino) {
+    int current_page = 0;
+    int pos;
+    size_t record_len;
+    struct ftfs_dir *dir;
+    struct ftfs_dir *newdir;
+    struct page *page;
+    void *kaddr;
+    int err = 0;
+    int rec_len;
+
+    // TODO: Error handling
+    // TODO: LOOOOOTS of locking
+    // They use i_size_write to lock inode->i_size, and they use lock_page
+    record_len = sizeof(struct ftfs_dir) + dentry->d_name.len;
+    // We go to i_size + PAGE_SIZE as to allocate a new page if there's no space
+    // left
+    while (current_page * PAGE_SIZE < inode->i_size + PAGE_SIZE) {
+        page = ft_get_page(inode, current_page);
+        if (IS_ERR(page))
+            return PTR_ERR(page);
+        lock_page(page);
+        // TODO: Lock page ?
+        kaddr = page_address(page);
+        pos = 0;
+        do {
+            dir = (struct ftfs_dir*)(kaddr + pos);
+            if (current_page * PAGE_SIZE == inode->i_size) {
+                LOG("Allocating new page for direntry");
+                goto got_it;
+            }
+            if (PAGE_SIZE - pos < dir->len) {
+                LOG("Malformed direntry");
+                err = -EIO;
+                goto err_unlock;
+            }
+            if (dir->inode == 0 && record_len < dir->len) {
+                LOG("Using empty inode for direntry");
+                goto got_it;
+            } else if (dir->inode != 0 && record_len < dir->len - (sizeof(struct ftfs_dir) + dir->name_len)) {
+                LOG("Using unused space next to '%.*s' for direntry", dir->name_len, dir->name);
+                goto got_it;
+            }
+            pos += dir->len;
+        } while (pos < PAGE_SIZE);
+        unlock_page(page);
+        ft_put_page(page);
+        current_page++;
+    }
+    return -EINVAL;
+
+got_it:
+    rec_len = dir->len;
+    if ((err = __block_write_begin(page, pos, rec_len, ft_get_block)))
+        goto err_unlock;
+    if (dir->inode != 0) {
+        // The space is after the current dir.
+        dir->len = sizeof(struct ftfs_dir) + dir->name_len;
+        newdir = (struct ftfs_dir*)(kaddr + pos + dir->len);
+        newdir->inode = 0;
+        newdir->len = rec_len - dir->len;
+        LOG("Had len of %d, now old direntry is %d and new is %d", rec_len, dir->len, newdir->len);
+        dir = newdir;
+    }
+    dir->name_len = dentry->d_name.len;
+    memcpy(dir->name, dentry->d_name.name, dentry->d_name.len);
+    dir->inode = ino;
+    block_write_end(NULL, page->mapping, pos, rec_len, rec_len, page, NULL);
+    if (pos + rec_len > inode->i_size) {
+        inode->i_size = pos + rec_len;
+        mark_inode_dirty(inode);
+    }
+    unlock_page(page);
+err_unlock:
+    ft_put_page(page);
+    return err;
 }
 
 int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
@@ -46,8 +125,8 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
         kaddr = page_address(page);
         do {
             dir = (struct ftfs_dir*)(kaddr + (*pos % PAGE_SIZE));
-            if (PAGE_SIZE - (*pos % PAGE_SIZE) < dir->len) {
-                // malformed directory entry !
+            if (dir->len == 0 || PAGE_SIZE - (*pos % PAGE_SIZE) < dir->len) {
+                LOG("Malformed direntry");
                 return -EIO;
             }
             // dir->inode == 0 means the entry is "unused". This can happen

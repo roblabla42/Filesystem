@@ -38,6 +38,59 @@ static int get_raw_inode(struct super_block *sb, ino_t ino,
     return 0;
 }
 
+static int alloc_raw_inode(struct super_block *sb)
+{
+    struct ftfs_fs_info *fsinfo;
+    struct buffer_head *bh;
+    unsigned long *bitmap;
+    int next;
+
+    fsinfo = (struct ftfs_fs_info*)sb->s_fs_info;
+    if ((bh = sb_bread(sb, fsinfo->group_desc->inode_bitmap_block)) == NULL)
+        return -ENOMEM;
+
+    bitmap = (unsigned long*)bh->b_data;
+    next = find_next_zero_bit(bitmap, bh->b_size * 8, 0);
+    if (next < bh->b_size * 8) {
+        // Make sure nobody else claims our buffer !
+        bh->b_data[next / 8] |= 1 << (next % 8);
+        LOG("Reserved block %d", next);
+        mark_buffer_dirty(bh);
+    } else {
+        next = -ENOSPC;
+    }
+    brelse(bh);
+    return next;
+}
+
+static struct inode *ft_new_inode(struct inode *dir, umode_t mode)
+{
+    // TODO: Clean-up in error handling
+    struct inode *inode;
+    struct ftfs_inode_info *ft_inode_info;
+    int ino;
+
+    inode = new_inode(dir->i_sb);
+    if (!inode)
+        return ERR_PTR(-ENOMEM);
+    ft_inode_info = kmalloc(sizeof(struct ftfs_inode_info), GFP_KERNEL);
+    if (!ft_inode_info)
+        return ERR_PTR(-ENOMEM);
+
+    if ((ino = alloc_raw_inode(dir->i_sb)) < 0)
+        return ERR_PTR(ino);
+    inode_init_owner(inode, dir, mode);
+    inode->i_ino = ino;
+    inode->i_blocks = 0;
+    inode->i_mtime = inode->i_atime = inode->i_ctime = current_time(inode);
+    inode->i_private = ft_inode_info;
+    inode->i_generation = 0;
+    memset(ft_inode_info->blocks, 0, sizeof(ft_inode_info->blocks));
+    if (insert_inode_locked(inode) < 0)
+        return ERR_PTR(-EIO);
+    return inode;
+}
+
 struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
 {
     struct inode *inode;
@@ -83,7 +136,7 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     inode->i_ctime.tv_sec = ft_inode->ctime;
     inode->i_mtime.tv_sec = ft_inode->mtime;
     inode->i_atime.tv_nsec = inode->i_ctime.tv_nsec = inode->i_mtime.tv_nsec = 0;
-
+    set_nlink(inode, ft_inode->nlinks);
     switch (inode->i_mode & S_IFMT)
     {
     case S_IFREG:           LOG("reg");
@@ -131,6 +184,7 @@ int ft_write_inode(struct inode *inode, struct writeback_control *wbc)
     ft_inode->atime = inode->i_atime.tv_sec;
     ft_inode->ctime = inode->i_ctime.tv_sec;
     ft_inode->mtime = inode->i_mtime.tv_sec;
+    ft_inode->nlinks = inode->i_nlink;
     memcpy(ft_inode->blocks, inode_info->blocks, sizeof(ft_inode->blocks));
     mark_buffer_dirty(bh);
     brelse(bh);
@@ -157,7 +211,24 @@ static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 
 static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
-    return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
+    struct inode *inode;
+    int err;
+
+    inode = ft_new_inode(dir, mode);
+    if (IS_ERR(inode))
+        return PTR_ERR(inode);
+    if ((err = ft_insert_inode_in_dir(dir, dentry, inode->i_ino))) {
+        inode_dec_link_count(inode);
+        unlock_new_inode(inode);
+        iput(inode);
+        return err;
+    } else {
+        unlock_new_inode(inode);
+        d_instantiate(dentry, inode);
+        return 0;
+    }
+
+    //return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
 }
 
 struct lookup_ctx {
@@ -204,7 +275,7 @@ static struct dentry *ft_lookup(struct inode *dir, struct dentry *dentry,
 }
 
 static const struct inode_operations ft_dir_inode_operations = {
-    //.create     = ftfs_create,
+    .create     = ftfs_create,
     .lookup     = ft_lookup,
     .link       = simple_link,
     .unlink     = simple_unlink,
