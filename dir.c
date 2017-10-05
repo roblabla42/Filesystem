@@ -47,19 +47,19 @@ int ft_insert_inode_in_dir(struct inode *inode, struct dentry *dentry, ino_t ino
         do {
             dir = (struct ftfs_dir*)(kaddr + pos);
             if (current_page * PAGE_SIZE == inode->i_size) {
-                // New page allocated.
+                LOG("Allocating new page for direntry");
                 goto got_it;
             }
             if (PAGE_SIZE - pos < dir->len) {
-                // malformed directory entry !
+                LOG("Malformed direntry");
                 err = -EIO;
                 goto err_unlock;
             }
             if (dir->inode == 0 && record_len < dir->len) {
-                // There's an empty inode we can use
+                LOG("Using empty inode for direntry");
                 goto got_it;
             } else if (dir->inode != 0 && record_len < dir->len - (sizeof(struct ftfs_dir) + dir->name_len)) {
-                // We have space after that node
+                LOG("Using unused space next to '%.*s' for direntry", dir->name_len, dir->name);
                 goto got_it;
             }
             pos += dir->len;
@@ -80,6 +80,7 @@ got_it:
         newdir = (struct ftfs_dir*)(kaddr + pos + dir->len);
         newdir->inode = 0;
         newdir->len = rec_len - dir->len;
+        LOG("Had len of %d, now old direntry is %d and new is %d", rec_len, dir->len, newdir->len);
         dir = newdir;
     }
     dir->name_len = dentry->d_name.len;
@@ -125,7 +126,7 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
         do {
             dir = (struct ftfs_dir*)(kaddr + (*pos % PAGE_SIZE));
             if (dir->len == 0 || PAGE_SIZE - (*pos % PAGE_SIZE) < dir->len) {
-                // malformed directory entry !
+                LOG("Malformed direntry");
                 return -EIO;
             }
             // dir->inode == 0 means the entry is "unused". This can happen
