@@ -136,7 +136,7 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     inode->i_ctime.tv_sec = ft_inode->ctime;
     inode->i_mtime.tv_sec = ft_inode->mtime;
     inode->i_atime.tv_nsec = inode->i_ctime.tv_nsec = inode->i_mtime.tv_nsec = 0;
-
+    set_nlink(inode, ft_inode->nlinks);
     switch (inode->i_mode & S_IFMT)
     {
     case S_IFREG:           LOG("reg");
@@ -184,6 +184,7 @@ int ft_write_inode(struct inode *inode, struct writeback_control *wbc)
     ft_inode->atime = inode->i_atime.tv_sec;
     ft_inode->ctime = inode->i_ctime.tv_sec;
     ft_inode->mtime = inode->i_mtime.tv_sec;
+    ft_inode->nlinks = inode->i_nlink;
     memcpy(ft_inode->blocks, inode_info->blocks, sizeof(ft_inode->blocks));
     mark_buffer_dirty(bh);
     brelse(bh);

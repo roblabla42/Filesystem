@@ -51,7 +51,7 @@ struct ftfs_inode {
     __le32 mtime;
     __le32 dtime;
     __le16 gid;
-    __le16 unused1;
+    __le16 nlinks;
     __le32 unused2[3];
     __le32 blocks[15]; // 0-11 dir, 12 ind, 13 d-ind, 14 t-ind.
     __le32 unused5[7];

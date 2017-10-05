@@ -24,9 +24,9 @@ int ft_insert_inode_in_dir(struct inode *inode, struct dentry *dentry, ino_t ino
     int pos;
     size_t record_len;
     struct ftfs_dir *dir;
+    struct ftfs_dir *newdir;
     struct page *page;
     void *kaddr;
-    int tmplen;
     int err = 0;
     int rec_len;
 
@@ -76,11 +76,11 @@ got_it:
         goto err_unlock;
     if (dir->inode != 0) {
         // The space is after the current dir.
-        tmplen = dir->len;
         dir->len = sizeof(struct ftfs_dir) + dir->name_len;
-        dir = (struct ftfs_dir*)(kaddr + pos + dir->len);
-        dir->inode = 0;
-        dir->len = tmplen - dir->len;
+        newdir = (struct ftfs_dir*)(kaddr + pos + dir->len);
+        newdir->inode = 0;
+        newdir->len = rec_len - dir->len;
+        dir = newdir;
     }
     dir->name_len = dentry->d_name.len;
     memcpy(dir->name, dentry->d_name.name, dentry->d_name.len);
@@ -124,7 +124,7 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
         kaddr = page_address(page);
         do {
             dir = (struct ftfs_dir*)(kaddr + (*pos % PAGE_SIZE));
-            if (PAGE_SIZE - (*pos % PAGE_SIZE) < dir->len) {
+            if (dir->len == 0 || PAGE_SIZE - (*pos % PAGE_SIZE) < dir->len) {
                 // malformed directory entry !
                 return -EIO;
             }
