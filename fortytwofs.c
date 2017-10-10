@@ -9,6 +9,7 @@ static int ft_acquire_block(struct super_block *sb) {
     struct buffer_head *bh;
     unsigned long *bitmap;
     int next;
+    int i;
 
     fsinfo = sb->s_fs_info;
     // TODO: Figure out what map_bh really does.
@@ -18,20 +19,24 @@ static int ft_acquire_block(struct super_block *sb) {
     // Linux kernel implements a variant of it, but I'm not too sure about how
     // everything works.
     // TODO: I should lock this for sure !
-    LOG("Reading BGD @ %d", fsinfo->group_desc->block_bitmap_block);
-    if ((bh = sb_bread(sb, fsinfo->group_desc->block_bitmap_block)) == NULL) {
-        LOG("Failed to read BGD !");
-        // Failed to read. Critical error.
-        return -EIO;
+    for (i = 0; i < fsinfo->super_block->block_count / fsinfo->super_block->blocks_per_group; i++) {
+        LOG("Reading BGD @ %d", fsinfo->group_desc[i]->block_bitmap_block);
+        if ((bh = sb_bread(sb, fsinfo->group_desc[i]->block_bitmap_block)) == NULL) {
+            LOG("Failed to read BGD !");
+            return -EIO;
+        }
+        bitmap = (unsigned long*)bh->b_data;
+        next = find_next_zero_bit(bitmap, bh->b_size * 8, 0);
+        if (next < bh->b_size * 8)
+            goto finished;
+        brelse(bh);
     }
-    bitmap = (unsigned long*)bh->b_data;
-    next = find_next_zero_bit(bitmap, bh->b_size * 8, 0);
-    if (next < bh->b_size * 8) {
-        // Make sure nobody else claims our buffer !
-        bh->b_data[next / 8] |= 1 << (next % 8);
-        LOG("Reserved block %d", next);
-        mark_buffer_dirty(bh);
-    }
+    return -ENOSPC;
+finished:
+    // Make sure nobody else claims our buffer !
+    bh->b_data[next / 8] |= 1 << (next % 8);
+    LOG("Reserved block %d", (1024 / sb->s_blocksize) + i * fsinfo->super_block->blocks_per_group + next);
+    mark_buffer_dirty(bh);
     brelse(bh);
     // We don't zero-out the block here ! Instead, we expect the user to call
     // set_buffer_new, which asks the kernel to zero-out the buffer when it's
@@ -39,7 +44,8 @@ static int ft_acquire_block(struct super_block *sb) {
     //
     // TODO: We need to change this. The behavior is almost certainly wrong in
     // edge cases.
-    return next;
+    // The first block is reserved
+    return (1024 / sb->s_blocksize) + i * fsinfo->super_block->blocks_per_group + next;
 }
 
 #define FT_ACQUIRE_BLOCK(sb, blockptr, create, new, dirty, ptr) (create) ? ft_get_or_allocate_block((sb), (blockptr), new, (void(*)(void*))(dirty), (ptr)) : *(blockptr)
@@ -230,6 +236,9 @@ static int ft_fill_super(struct super_block *sb, void *data, int silent)
     struct buffer_head *bh;
     struct ftfs_fs_info *fsinfo;
     int blocksize;
+    size_t block_group_count;
+    int i, j;
+    int super_block_nr;
 
     ret = -ENOMEM;
 
@@ -248,16 +257,25 @@ static int ft_fill_super(struct super_block *sb, void *data, int silent)
     // reserved for the bootloader). It's a bit of a weird requirement given
     // partitions shouldn't overlap with the bootloader at all. I'd like to
     // get rid of this eventually. But let's stay ext2-compatible for now.
-    if ((bh = sb_bread(sb, 1024 / blocksize)) == NULL)
+    super_block_nr = 1024 / blocksize;
+    if ((bh = sb_bread(sb, super_block_nr)) == NULL)
         goto failed_fsinfo;
     fsinfo->super_block = (struct ftfs_super_block*)bh->b_data + (1024 % blocksize);
     fsinfo->super_block_bh = bh;
 
-    // Get the block group info. The block group
-    if ((bh = sb_bread(sb, 2048 / blocksize)) == NULL)
-        goto failed_super_block;
-    fsinfo->group_desc = (struct ftfs_block_group*)bh->b_data + (2048 % blocksize);
-    fsinfo->group_desc_bh = bh;
+    block_group_count = fsinfo->super_block->block_count / fsinfo->super_block->blocks_per_group;
+    if ((fsinfo->group_desc = kzalloc(sizeof(struct ftfs_block_group*) * block_group_count, GFP_KERNEL)) == NULL)
+        goto failed_group_desc;
+    if ((fsinfo->group_desc_bh = kzalloc(sizeof(struct buffer_head*) * block_group_count, GFP_KERNEL)) == NULL)
+        goto failed_group_desc_bh;
+
+    for (i = 0; i < block_group_count; i++) {
+        // Get the block group info. The block group
+        LOG("Acquiring group %d at block %d", i, fsinfo->super_block->blocks_per_group * i + super_block_nr + 1);
+        if ((fsinfo->group_desc_bh[i] = sb_bread(sb, fsinfo->super_block->blocks_per_group * i + super_block_nr + 1)) == NULL)
+            goto failed_super_block;
+        fsinfo->group_desc[i] = (struct ftfs_block_group*)fsinfo->group_desc_bh[i]->b_data;
+    }
 
     sb->s_fs_info = fsinfo;
     sb->s_magic = fsinfo->super_block->magic;
@@ -271,6 +289,10 @@ static int ft_fill_super(struct super_block *sb, void *data, int silent)
     sb->s_time_gran      = 1;
 
     root_inode = ft_get_inode(sb, FT_ROOT_INODE);
+    if (IS_ERR(root_inode)) {
+        ret = PTR_ERR(root_inode);
+        goto failed_super_block;
+    }
     if (!(sb->s_root = d_make_root(root_inode)))
         goto failed_release;
 
@@ -278,7 +300,13 @@ static int ft_fill_super(struct super_block *sb, void *data, int silent)
 cantfind_ftfs:
     LOG("error: can't find an ft filesystem on device %s, got %lx, blocksize=%ld.", sb->s_id, sb->s_magic, sb->s_blocksize);
 failed_super_block:
-    brelse(fsinfo->group_desc_bh);
+    for (j = 0; j < i; j++) {
+        brelse(fsinfo->group_desc_bh[j]);
+    }
+failed_group_desc:
+    kfree(fsinfo->group_desc);
+failed_group_desc_bh:
+    kfree(fsinfo->group_desc_bh);
 failed_release:
     brelse(fsinfo->super_block_bh);
 failed_fsinfo: 
@@ -291,9 +319,15 @@ failed:
 static void ft_put_super(struct super_block *sb)
 {
     struct ftfs_fs_info *fsinfo = (struct ftfs_fs_info*)sb->s_fs_info;
+    size_t block_group_count;
+    int i;
 
     LOG("Releasing superblock !");
-    brelse(fsinfo->group_desc_bh);
+    block_group_count = fsinfo->super_block->block_count / fsinfo->super_block->blocks_per_group;
+    for (i = 0; i < block_group_count; i++)
+        brelse(fsinfo->group_desc_bh[i]);
+    kfree(fsinfo->group_desc_bh);
+    kfree(fsinfo->group_desc);
     brelse(fsinfo->super_block_bh);
     sb->s_fs_info = NULL;
     kfree(fsinfo);

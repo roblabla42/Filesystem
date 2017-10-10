@@ -26,10 +26,14 @@ int ft_insert_inode_in_dir(struct inode *dir, struct dentry *dentry, ino_t ino);
 
 // The super-block
 struct ftfs_super_block {
-    __le32 unused1[6];
+    __le32 unused1;
+    __le32 block_count;
+    __le32 unused2[4];
     __le32 log_block_size;
-    __le32 unused2[6];
-    __le16 unused3[2];
+    __le32 unused3;
+    __le32 blocks_per_group;
+    __le32 unused4[4];
+    __le16 unused5[2];
     __le16 magic;
 };
 
@@ -73,8 +77,8 @@ struct ftfs_fs_info {
     struct buffer_head *super_block_bh;
     // For now we only have one group_desc. We'll see about supporting multiple
     // block groups later.
-    struct ftfs_block_group *group_desc;
-    struct buffer_head *group_desc_bh;
+    struct ftfs_block_group **group_desc;
+    struct buffer_head **group_desc_bh;
 };
 
 struct ftfs_inode_info {
