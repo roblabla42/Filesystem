@@ -116,8 +116,10 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
 
     LOG("Getting inode %ld", ino);
     inode = iget_locked(sb, ino);
-    if (!inode)
+    if (!inode) {
+        LOG("Failed to acquire/lock a new inode");
         return ERR_PTR(-ENOMEM);
+    }
     if (!(inode->i_state & I_NEW))
         return inode;
     LOG("New inode %ld", ino);
@@ -136,6 +138,11 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     //
     // TODO: figure out how to delete this
     ft_inode_info = kmalloc(sizeof(struct ftfs_inode_info), GFP_KERNEL);
+    if (!ft_inode_info) {
+        LOG("Failed to allocate memory !");
+        ret = -ENOMEM;
+        goto failed;
+    }
     memcpy(ft_inode_info->blocks, ft_inode->blocks, sizeof(ft_inode->blocks));
     inode->i_private = ft_inode_info;
 

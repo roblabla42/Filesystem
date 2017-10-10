@@ -289,6 +289,10 @@ static int ft_fill_super(struct super_block *sb, void *data, int silent)
     sb->s_time_gran      = 1;
 
     root_inode = ft_get_inode(sb, FT_ROOT_INODE);
+    if (IS_ERR(root_inode)) {
+        ret = PTR_ERR(root_inode);
+        goto failed_super_block;
+    }
     if (!(sb->s_root = d_make_root(root_inode)))
         goto failed_release;
 
