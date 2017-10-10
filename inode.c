@@ -24,18 +24,28 @@ static const struct inode_operations ft_dir_inode_operations;
 static int get_raw_inode(struct super_block *sb, ino_t ino,
         struct ftfs_inode **inode, struct buffer_head **bh)
 {
+    struct ftfs_fs_info *fsinfo;
     struct ftfs_block_group *group;
     int offset;
+    unsigned bgd_idx;
 
-    group = (struct ftfs_block_group*)((struct ftfs_fs_info*)sb->s_fs_info)->group_desc;
-    offset = (ino - 1) * sizeof(struct ftfs_inode);
-    LOG("Getting inode from block %d, offset %d, blocksize %ld", group->inode_table_block, offset, sb->s_blocksize);
-    LOG("block nbr %ld", group->inode_table_block + (offset / sb->s_blocksize));
-    if ((*bh = sb_bread(sb, group->inode_table_block + (offset / sb->s_blocksize))) == NULL)
-        return -ENOMEM;
-    LOG("offset %ld on %ld", offset % sb->s_blocksize, (*bh)->b_size);
-    *inode = (struct ftfs_inode*)((*bh)->b_data + (offset % sb->s_blocksize));
-    return 0;
+    fsinfo = (struct ftfs_fs_info*)sb->s_fs_info;
+    // Get block group
+    bgd_idx = (ino - 1) / (sb->s_blocksize * 8);
+    LOG("Getting inode from bgd idx %u", bgd_idx);
+    if (bgd_idx < fsinfo->super_block->block_count / fsinfo->super_block->blocks_per_group) {
+        group = fsinfo->group_desc[bgd_idx];
+        offset = ((ino - 1) % (sb->s_blocksize * 8)) * sizeof(struct ftfs_inode);
+        LOG("Getting inode from block %d, offset %d, blocksize %ld", group->inode_table_block, offset, sb->s_blocksize);
+        LOG("block nbr %ld", group->inode_table_block + (offset / sb->s_blocksize));
+        if ((*bh = sb_bread(sb, group->inode_table_block + (offset / sb->s_blocksize))) == NULL)
+            return -ENOMEM;
+        LOG("offset %ld on %ld", offset % sb->s_blocksize, (*bh)->b_size);
+        *inode = (struct ftfs_inode*)((*bh)->b_data + (offset % sb->s_blocksize));
+        return 0;
+    } else {
+        return -EINVAL;
+    }
 }
 
 static int alloc_raw_inode(struct super_block *sb)
@@ -44,23 +54,28 @@ static int alloc_raw_inode(struct super_block *sb)
     struct buffer_head *bh;
     unsigned long *bitmap;
     int next;
+    int i;
 
     fsinfo = (struct ftfs_fs_info*)sb->s_fs_info;
-    if ((bh = sb_bread(sb, fsinfo->group_desc->inode_bitmap_block)) == NULL)
-        return -ENOMEM;
+    for (i = 0; i < fsinfo->super_block->block_count / fsinfo->super_block->blocks_per_group; i++) {
+        if ((bh = sb_bread(sb, fsinfo->group_desc[i]->inode_bitmap_block)) == NULL)
+            return -ENOMEM;
 
-    bitmap = (unsigned long*)bh->b_data;
-    next = find_next_zero_bit(bitmap, bh->b_size * 8, 0);
-    if (next < bh->b_size * 8) {
-        // Make sure nobody else claims our buffer !
-        bh->b_data[next / 8] |= 1 << (next % 8);
-        LOG("Reserved block %d", next);
-        mark_buffer_dirty(bh);
-    } else {
-        next = -ENOSPC;
+        bitmap = (unsigned long*)bh->b_data;
+        next = find_next_zero_bit(bitmap, bh->b_size * 8, 0);
+        if (next < bh->b_size * 8)
+            goto found;
+        brelse(bh);
     }
+    return -ENOSPC;
+found:
+    // TODO: Make sure nobody else claims our buffer !
+    bh->b_data[next / 8] |= 1 << (next % 8);
+    // TODO: use inode_count instead of sb->blocksize * 8
+    LOG("Reserved block %ld", next + i * (sb->s_blocksize * 8));
+    mark_buffer_dirty(bh);
     brelse(bh);
-    return next;
+    return next + i * (sb->s_blocksize * 8);
 }
 
 static struct inode *ft_new_inode(struct inode *dir, umode_t mode)
