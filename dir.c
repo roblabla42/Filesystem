@@ -157,5 +157,6 @@ static int ft_readdir(struct file *file, struct dir_context *ctx) {
 }
 
 const struct file_operations ft_dir_file_operations = {
-    .iterate_shared = ft_readdir
+    .iterate_shared = ft_readdir,
+    .read = generic_read_dir
 };

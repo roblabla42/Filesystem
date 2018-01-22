@@ -35,7 +35,7 @@ static int ft_acquire_block(struct super_block *sb) {
 finished:
     // Make sure nobody else claims our buffer !
     bh->b_data[next / 8] |= 1 << (next % 8);
-    LOG("Reserved block %d", (1024 / sb->s_blocksize) + i * fsinfo->super_block->blocks_per_group + next);
+    LOG("Reserved block %ld", (1024 / sb->s_blocksize) + i * fsinfo->super_block->blocks_per_group + next);
     mark_buffer_dirty(bh);
     brelse(bh);
     // We don't zero-out the block here ! Instead, we expect the user to call

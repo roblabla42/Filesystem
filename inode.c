@@ -213,7 +213,7 @@ int ft_write_inode(struct inode *inode, struct writeback_control *wbc)
     return 0;
 }
 
-static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+/*static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
     // TODO: create inode
     struct inode *inode = ft_get_inode(dir->i_sb, get_next_ino());
@@ -229,7 +229,7 @@ static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, de
 static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
     return ftfs_mknod(dir, dentry, mode | S_IFDIR, 0);
-}
+}*/
 
 static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
@@ -299,11 +299,11 @@ static struct dentry *ft_lookup(struct inode *dir, struct dentry *dentry,
 static const struct inode_operations ft_dir_inode_operations = {
     .create     = ftfs_create,
     .lookup     = ft_lookup,
-    .link       = simple_link,
-    .unlink     = simple_unlink,
+    //.link       = simple_link,
+    //.unlink     = simple_unlink,
     /* .symlink    = ftfs_symlink, [> TODO <] */
     //.mkdir      = ftfs_mkdir,
-    .rmdir      = simple_rmdir,
+    //.rmdir      = simple_rmdir,
     //.mknod      = ftfs_mknod,
-    .rename     = simple_rename,
+    //.rename     = simple_rename,
 };
