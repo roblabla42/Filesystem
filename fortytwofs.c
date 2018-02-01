@@ -50,6 +50,8 @@ finished:
 
 #define FT_ACQUIRE_BLOCK(sb, blockptr, create, new, dirty, ptr) (create) ? ft_get_or_allocate_block((sb), (blockptr), new, (void(*)(void*))(dirty), (ptr)) : *(blockptr)
 
+// If *block isn't currently acquired (is == 0), then read it from the disk and
+// make *block point to it.
 static int ft_get_or_allocate_block(struct super_block *sb, int *block, int *new_out, void (*mark_dirty)(void*), void *dirty_data) {
     int res;
 
@@ -66,6 +68,7 @@ static int ft_get_or_allocate_block(struct super_block *sb, int *block, int *new
     return *block;
 }
 
+// Returns an inode block. If create is true, then allocate the block on the sb.
 int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create)
 {
     struct ftfs_inode_info *ft_inode = (struct ftfs_inode_info*)inode->i_private;
@@ -218,6 +221,7 @@ const struct inode_operations ft_file_inode_operations = {
 };
 
 const struct file_operations ft_file_operations = {
+    .open         = generic_file_open,
     .read_iter    = generic_file_read_iter,
     .write_iter   = generic_file_write_iter,
     .mmap         = generic_file_mmap,
