@@ -78,6 +78,34 @@ found:
     return next + i * (sb->s_blocksize * 8);
 }
 
+/*
+ * Assigns the right inode-operations, aops, and file-operations to inode
+ * depending on its type, which is reflected in mode.
+ */
+void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode)
+{
+	switch (mode & S_IFMT)
+	{
+	case S_IFREG:           LOG("reg");
+	    inode->i_op             = &ft_file_inode_operations;
+	    inode->i_mapping->a_ops = &ft_aops;
+	    inode->i_fop            = &ft_file_operations;
+	    break;
+	case S_IFDIR:           LOG("dir");
+	    inode->i_op             = &ft_dir_inode_operations;
+	    inode->i_mapping->a_ops = &ft_aops;
+	    inode->i_fop            = &ft_dir_file_operations;
+	    break;
+	case S_IFLNK:           LOG("link");
+	    inode->i_op             = &simple_symlink_inode_operations;
+	    break;
+	default:                LOG("special");
+	    init_special_inode(inode, inode->i_mode, 0);
+	    break;
+	}
+}
+
+
 static struct inode *ft_new_inode(struct inode *dir, umode_t mode)
 {
     // TODO: Clean-up in error handling
@@ -101,6 +129,7 @@ static struct inode *ft_new_inode(struct inode *dir, umode_t mode)
     inode->i_private = ft_inode_info;
     inode->i_generation = 0;
     memset(ft_inode_info->blocks, 0, sizeof(ft_inode_info->blocks));
+    ft_assign_operations_to_inode(inode, mode);
     if (insert_inode_locked(inode) < 0)
         return ERR_PTR(-EIO);
     return inode;
@@ -159,26 +188,7 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     inode->i_mtime.tv_sec = ft_inode->mtime;
     inode->i_atime.tv_nsec = inode->i_ctime.tv_nsec = inode->i_mtime.tv_nsec = 0;
     set_nlink(inode, ft_inode->nlinks);
-    switch (inode->i_mode & S_IFMT)
-    {
-    case S_IFREG:           LOG("reg");
-        inode->i_op             = &ft_file_inode_operations;
-        inode->i_mapping->a_ops = &ft_aops;
-        inode->i_fop            = &ft_file_operations;
-        break;
-    case S_IFDIR:           LOG("dir");
-        inc_nlink(inode);
-        inode->i_op             = &ft_dir_inode_operations;
-        inode->i_mapping->a_ops = &ft_aops;
-        inode->i_fop            = &ft_dir_file_operations;
-        break;
-    case S_IFLNK:           LOG("link");
-        inode->i_op             = &simple_symlink_inode_operations;
-        break;
-    default:                LOG("special");
-        init_special_inode(inode, inode->i_mode, 0);
-        break;
-    }
+    ft_assign_operations_to_inode(inode, inode->i_mode);
 
     brelse(bh);
     unlock_new_inode(inode);
