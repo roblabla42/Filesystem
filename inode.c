@@ -263,6 +263,25 @@ static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, b
     //return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
 }
 
+/*
+ * Creates a hard link by making the dentry point to an already existing inode,
+ * and adds a dir_entry pointing to that inode's ino.
+ *
+ * The inode->i_link is incremented.
+ */
+static int ft_hard_link(struct dentry *target, struct inode *dir, struct dentry *dentry)
+{
+	struct inode	*target_inode = d_inode(target);
+	int		err;
+
+	target_inode->i_ctime = current_time(target_inode);
+	if ((err = ft_insert_inode_in_dir(dir, dentry, target_inode->i_ino)))
+		return err;
+	inode_inc_link_count(target_inode);
+	d_instantiate(dentry, target_inode);
+	return 0;
+}
+
 struct lookup_ctx {
     ino_t ino;
     const char *name;
@@ -309,7 +328,7 @@ static struct dentry *ft_lookup(struct inode *dir, struct dentry *dentry,
 static const struct inode_operations ft_dir_inode_operations = {
     .create     = ftfs_create,
     .lookup     = ft_lookup,
-    .link       = simple_link,
+    .link       = ft_hard_link,
     .unlink     = simple_unlink,
     /* .symlink    = ftfs_symlink, [> TODO <] */
     //.mkdir      = ftfs_mkdir,
