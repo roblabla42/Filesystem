@@ -22,6 +22,9 @@ typedef int (*ft_iterator)(struct ftfs_dir*, void*);
 int ft_iterate(struct inode *inode, ft_iterator it, loff_t *pos, void *data);
 int ft_insert_inode_in_dir(struct inode *dir, struct dentry *dentry, ino_t ino);
 
+/* symlink.c */
+int	ft_init_symlink_inode(struct inode *inode);
+
 // # On-disk structures
 
 // The super-block
@@ -81,9 +84,19 @@ struct ftfs_fs_info {
     struct buffer_head **group_desc_bh;
 };
 
+/*
+ * The i_block of the inode, stored in the inode->i_private field.
+ */
 struct ftfs_inode_info {
     int blocks[15];
 };
+
+/*
+ * Retrieves the ftfs_inode_info of an inode, saved in the inode->i_private
+ * @inode: the inode to get it from
+ */
+#define ft_get_inode_info(inode)	\
+	((struct ftfs_inode_info *)inode->i_private)
 
 extern       struct file_system_type         ft_type;
 extern const struct address_space_operations ft_aops;

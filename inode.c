@@ -97,6 +97,7 @@ void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode)
 	    inode->i_fop            = &ft_dir_file_operations;
 	    break;
 	case S_IFLNK:           LOG("link");
+	    ft_init_symlink_inode(inode);
 	    inode->i_op             = &simple_symlink_inode_operations;
 	    break;
 	default:                LOG("special");
