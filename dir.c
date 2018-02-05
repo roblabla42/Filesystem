@@ -3,7 +3,7 @@
 #include <linux/buffer_head.h>
 
 // Returns the page nbr of that inode, and make sure it is mapped in memory !
-static struct page *ft_get_page(struct inode *inode, int nbr)
+struct page *ft_get_page(struct inode *inode, int nbr)
 {
     struct page *page;
 
@@ -13,13 +13,13 @@ static struct page *ft_get_page(struct inode *inode, int nbr)
     return page;
 }
 
-static void ft_put_page(struct page *page)
+void ft_put_page(struct page *page)
 {
     kunmap(page);
     put_page(page);
 }
 
-int ft_insert_inode_in_dir(struct inode *inode, struct dentry *dentry, ino_t ino) {
+int ft_insert_inode_in_dir(struct inode *inode, const char *name, ino_t ino) {
     int current_page = 0;
     int pos;
     size_t record_len;
@@ -30,10 +30,11 @@ int ft_insert_inode_in_dir(struct inode *inode, struct dentry *dentry, ino_t ino
     int err = 0;
     int rec_len;
 
+    LOG("Creating %s", name);
     // TODO: Error handling
     // TODO: LOOOOOTS of locking
     // They use i_size_write to lock inode->i_size, and they use lock_page
-    record_len = sizeof(struct ftfs_dir) + dentry->d_name.len;
+    record_len = sizeof(struct ftfs_dir) + strlen(name);
     // We go to i_size + PAGE_SIZE as to allocate a new page if there's no space
     // left
     while (current_page * PAGE_SIZE < inode->i_size + PAGE_SIZE) {
@@ -83,8 +84,8 @@ got_it:
         LOG("Had len of %d, now old direntry is %d and new is %d", rec_len, dir->len, newdir->len);
         dir = newdir;
     }
-    dir->name_len = dentry->d_name.len;
-    memcpy(dir->name, dentry->d_name.name, dentry->d_name.len);
+    dir->name_len = strlen(name);
+    memcpy(dir->name, name, strlen(name));
     dir->inode = ino;
     block_write_end(NULL, page->mapping, pos, rec_len, rec_len, page, NULL);
     if (pos + rec_len > inode->i_size) {
