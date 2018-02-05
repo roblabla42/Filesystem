@@ -20,7 +20,9 @@ struct ftfs_dir;
 typedef int (*ft_iterator)(struct ftfs_dir*, void*);
 
 int ft_iterate(struct inode *inode, ft_iterator it, loff_t *pos, void *data);
-int ft_insert_inode_in_dir(struct inode *dir, struct dentry *dentry, ino_t ino);
+int ft_insert_inode_in_dir(struct inode *dir, const char *name, ino_t ino);
+struct page *ft_get_page(struct inode *inode, int nbr);
+void ft_put_page(struct page *page);
 
 // # On-disk structures
 

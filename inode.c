@@ -84,6 +84,7 @@ found:
  */
 void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode)
 {
+	LOG("Assigning operations with mode %x (%x)", mode, mode & S_IFMT);
 	switch (mode & S_IFMT)
 	{
 	case S_IFREG:           LOG("reg");
@@ -236,11 +237,6 @@ static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, de
     return 0;
 }
 
-static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
-{
-    return ftfs_mknod(dir, dentry, mode | S_IFDIR, 0);
-}
-
 static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
     struct inode *inode;
@@ -249,7 +245,7 @@ static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, b
     inode = ft_new_inode(dir, mode);
     if (IS_ERR(inode))
         return PTR_ERR(inode);
-    if ((err = ft_insert_inode_in_dir(dir, dentry, inode->i_ino))) {
+    if ((err = ft_insert_inode_in_dir(dir, dentry->d_name.name, inode->i_ino))) {
         inode_dec_link_count(inode);
         unlock_new_inode(inode);
         iput(inode);
@@ -275,7 +271,7 @@ static int ft_hard_link(struct dentry *target, struct inode *dir, struct dentry 
 	int		err;
 
 	target_inode->i_ctime = current_time(target_inode);
-	if ((err = ft_insert_inode_in_dir(dir, dentry, target_inode->i_ino)))
+	if ((err = ft_insert_inode_in_dir(dir, dentry->d_name.name, target_inode->i_ino)))
 		return err;
 	inode_inc_link_count(target_inode);
 	d_instantiate(dentry, target_inode);
@@ -325,13 +321,57 @@ static struct dentry *ft_lookup(struct inode *dir, struct dentry *dentry,
     return d_splice_alias(inode, dentry);
 }
 
+static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+{
+    struct inode *inode;
+    struct page *page;
+    int err;
+
+    LOG("RUNNING MKDIR FOR %s with mode %x", dentry->d_name.name, mode | S_IFDIR);
+    inode = ft_new_inode(dir, mode | S_IFDIR);
+    if (IS_ERR(inode))
+        return PTR_ERR(inode);
+
+    // Very simple
+    LOG("Getting page");
+    page = ft_get_page(inode, 0);
+    if (IS_ERR(page))
+        return PTR_ERR(page);
+    // TODO: Lock page
+    LOG("Locking page");
+    lock_page(page);
+    struct ftfs_dir *firstdir = page_address(page);
+    LOG("Page at address %p", firstdir);
+    firstdir->len = dir->i_sb->s_blocksize;
+    firstdir->inode = 0;
+    unlock_page(page);
+    ft_put_page(page);
+
+    if ((err = ft_insert_inode_in_dir(inode, ".", inode->i_ino)))
+        goto err;
+    if ((err = ft_insert_inode_in_dir(inode, "..", dir->i_ino)))
+        goto err;
+    if ((err = ft_insert_inode_in_dir(dir, dentry->d_name.name, inode->i_ino)))
+        goto err;
+
+    unlock_new_inode(inode);
+    d_instantiate(dentry, inode);
+    return 0;
+
+err:
+    inode_dec_link_count(inode);
+    unlock_new_inode(inode);
+    iput(inode);
+    return err;
+}
+
 static const struct inode_operations ft_dir_inode_operations = {
     .create     = ftfs_create,
     .lookup     = ft_lookup,
     .link       = ft_hard_link,
     .unlink     = simple_unlink,
     /* .symlink    = ftfs_symlink, [> TODO <] */
-    //.mkdir      = ftfs_mkdir,
+    .mkdir      = ftfs_mkdir,
     .rmdir      = simple_rmdir,
     //.mknod      = ftfs_mknod,
     .rename     = simple_rename,
