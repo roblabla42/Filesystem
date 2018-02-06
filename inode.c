@@ -108,7 +108,7 @@ void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode)
 }
 
 
-static struct inode *ft_new_inode(struct inode *dir, umode_t mode)
+struct inode *ft_new_inode(struct inode *dir, umode_t mode)
 {
     // TODO: Clean-up in error handling
     struct inode *inode;
@@ -238,26 +238,36 @@ static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, de
     return 0;
 }
 
+/* Insert the inode in the dir, mark it as ready and instantiate its d_entry */
+int ftfs_finish_inode_creation(struct inode *inode, struct inode *dir,
+					struct dentry *dentry)
+{
+	int err;
+
+	err = ft_insert_inode_in_dir(dir, dentry->d_name.name, inode->i_ino);
+	if (err) {
+		inode_dec_link_count(inode);
+		unlock_new_inode(inode);
+		iput(inode);
+		return err;
+	} else {
+		unlock_new_inode(inode);
+		d_instantiate(dentry, inode);
+		return 0;
+	}
+}
+
+/* User wants to create a new inode in a dir */
 static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
-    struct inode *inode;
-    int err;
+	struct inode *inode;
 
-    inode = ft_new_inode(dir, mode);
-    if (IS_ERR(inode))
-        return PTR_ERR(inode);
-    if ((err = ft_insert_inode_in_dir(dir, dentry->d_name.name, inode->i_ino))) {
-        inode_dec_link_count(inode);
-        unlock_new_inode(inode);
-        iput(inode);
-        return err;
-    } else {
-        unlock_new_inode(inode);
-        d_instantiate(dentry, inode);
-        return 0;
-    }
+	inode = ft_new_inode(dir, mode);
+	if (IS_ERR(inode))
+	    return PTR_ERR(inode);
 
-    //return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
+	return ftfs_finish_inode_creation(inode, dir, dentry);
+	//return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
 }
 
 /*
@@ -371,7 +381,7 @@ static const struct inode_operations ft_dir_inode_operations = {
     .lookup     = ft_lookup,
     .link       = ft_hard_link,
     .unlink     = simple_unlink,
-    /* .symlink    = ftfs_symlink, [> TODO <] */
+    .symlink    = ft_symlink,
     .mkdir      = ftfs_mkdir,
     .rmdir      = simple_rmdir,
     //.mknod      = ftfs_mknod,

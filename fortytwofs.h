@@ -11,10 +11,14 @@
 #define FT_ROOT_INODE    2
 #define FORTYTWOFS_MAGIC 0x4242
 
-
 int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create);
+
+/* inode.c */
+struct inode *ft_new_inode(struct inode *dir, umode_t mode);
 struct inode *ft_get_inode(struct super_block *sb, ino_t ino);
 int ft_write_inode(struct inode *inode, struct writeback_control *wbc);
+int ftfs_finish_inode_creation(struct inode *inode, struct inode *dir,
+					struct dentry *dentry);
 
 struct ftfs_dir;
 typedef int (*ft_iterator)(struct ftfs_dir*, void*);
@@ -26,6 +30,8 @@ void ft_put_page(struct page *page);
 
 /* symlink.c */
 int	ft_init_symlink_inode(struct inode *inode);
+int	ft_symlink(struct inode *dir, struct dentry *dentry,
+		const char *symname);
 
 // # On-disk structures
 

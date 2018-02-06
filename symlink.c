@@ -71,3 +71,25 @@ int	ft_init_symlink_inode(struct inode *inode)
 	}
 	return 0;
 }
+
+/* User wants to create a symlink */
+int	ft_symlink(struct inode *dir, struct dentry *dentry,
+			const char *symname)
+{
+	struct inode	*inode;
+	size_t		symname_len;
+
+	symname_len = strlen(symname);
+	if (symname_len > FTFS_FAST_SYMLINK_MAXPATH)
+		return -ENAMETOOLONG; // TODO support fastsymlinks
+	inode = ft_new_inode(dir, S_IFLNK | S_IRWXUGO);
+	if (IS_ERR(inode))
+		return (PTR_ERR(inode));
+	/* copy symname in the i_block array */
+	memcpy(ft_fast_symlink_path(inode), symname, symname_len);
+	inode->i_size = symname_len;
+	ft_init_symlink_inode(inode);
+
+	mark_inode_dirty(inode);
+	return ftfs_finish_inode_creation(inode, dir, dentry);
+}
