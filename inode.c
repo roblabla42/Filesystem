@@ -99,7 +99,6 @@ void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode)
 	    break;
 	case S_IFLNK:           LOG("link");
 	    ft_init_symlink_inode(inode);
-	    inode->i_op             = &simple_symlink_inode_operations;
 	    break;
 	default:                LOG("special");
 	    init_special_inode(inode, inode->i_mode, 0);
@@ -189,6 +188,9 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     inode->i_ctime.tv_sec = ft_inode->ctime;
     inode->i_mtime.tv_sec = ft_inode->mtime;
     inode->i_atime.tv_nsec = inode->i_ctime.tv_nsec = inode->i_mtime.tv_nsec = 0;
+    /* block_count is in units of 512 bytes, convert it to blocks */
+    inode->i_blocks = DIV_ROUND_UP(ft_inode->block_count * 512, sb->s_blocksize);
+    LOG("ft_inode has block count = %u, so inode has block_count = %lu\n", ft_inode->block_count, inode->i_blocks);
     set_nlink(inode, ft_inode->nlinks);
     ft_assign_operations_to_inode(inode, inode->i_mode);
 

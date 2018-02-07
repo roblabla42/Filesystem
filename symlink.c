@@ -42,14 +42,12 @@ static inline char *ft_fast_symlink_path(struct inode *inode)
  */
 const struct inode_operations ft_fast_symlink_inode_operations = {
 	.get_link	= simple_get_link,
-	.setattr	= simple_setattr,
-	.getattr	= simple_getattr, // TODO : do symlinks have getattr ?
+	.getattr	= simple_getattr,
 };
 
 const struct inode_operations ft_slow_symlink_inode_operations = {
-	//.get_link	= TODO
-	.setattr	= simple_setattr,
-	.getattr	= simple_getattr, // TODO : do symlinks have getattr ?
+	.get_link	= page_get_link,
+	.getattr	= simple_getattr,
 };
 
 /* Initiate a symlink inode, preparing its i_link and operations */
@@ -64,9 +62,11 @@ int	ft_init_symlink_inode(struct inode *inode)
 		/* Add a '\0' at the end */
 		nd_terminate_link(path_str, inode->i_size, FTFS_FAST_SYMLINK_MAXPATH);
 		inode->i_op = &ft_fast_symlink_inode_operations;
+		inode->i_mapping->a_ops = NULL;
 	} else {
-		/* TODO support slow symlinks */
-		WARN(1, "Slow symlinks not supported");
+		/* Let vfs's page_get_link() read the link in the blocks */
+		inode_nohighmem(inode);
+		inode->i_mapping->a_ops = &ft_aops;
 		inode->i_op = &ft_slow_symlink_inode_operations;
 	}
 	return 0;
@@ -81,7 +81,7 @@ int	ft_symlink(struct inode *dir, struct dentry *dentry,
 
 	symname_len = strlen(symname);
 	if (symname_len > FTFS_FAST_SYMLINK_MAXPATH)
-		return -ENAMETOOLONG; // TODO support fastsymlinks
+		return -ENAMETOOLONG; // TODO support slowsymlinks creation
 	inode = ft_new_inode(dir, S_IFLNK | S_IRWXUGO);
 	if (IS_ERR(inode))
 		return (PTR_ERR(inode));
