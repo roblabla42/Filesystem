@@ -75,6 +75,7 @@ int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, i
     int block = 0;
     int new = 0;
 
+    // TODO increment inode->i_blocks
     LOG("getting block %lu (%s)", iblock, create ? "create" : "read");
     if (iblock < 12)
     {
@@ -313,7 +314,7 @@ failed_group_desc_bh:
     kfree(fsinfo->group_desc_bh);
 failed_release:
     brelse(fsinfo->super_block_bh);
-failed_fsinfo: 
+failed_fsinfo:
     kfree(fsinfo);
 failed:
     sb->s_fs_info = NULL;

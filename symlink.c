@@ -50,25 +50,34 @@ const struct inode_operations ft_slow_symlink_inode_operations = {
 	.getattr	= simple_getattr,
 };
 
-/* Initiate a symlink inode, preparing its i_link and operations */
+static void init_fast_symlink_inode(struct inode *inode)
+{
+	char *path_str = ft_fast_symlink_path(inode);
+
+	inode->i_link = path_str;
+	/* Add a '\0' at the end */
+	nd_terminate_link(path_str, inode->i_size, FTFS_FAST_SYMLINK_MAXPATH);
+	inode->i_op = &ft_fast_symlink_inode_operations;
+}
+
+static void init_slow_symlink_inode(struct inode *inode)
+{
+	/* Let vfs's page_get_link() read the link in the blocks */
+	inode_nohighmem(inode);
+	inode->i_mapping->a_ops = &ft_aops;
+	inode->i_op = &ft_slow_symlink_inode_operations;
+}
+
+/* Initiate a symlink inode, preparing its i_link and operations.
+ * Called only when fetching inode from disk */
 int	ft_init_symlink_inode(struct inode *inode)
 {
 	if (WARN(!S_ISLNK(inode->i_mode), "inode passed is not a symlink"))
 		return -EINVAL;
-	if (ft_is_fast_symlink(inode)) {
-		char *path_str = ft_fast_symlink_path(inode);
-
-		inode->i_link = path_str;
-		/* Add a '\0' at the end */
-		nd_terminate_link(path_str, inode->i_size, FTFS_FAST_SYMLINK_MAXPATH);
-		inode->i_op = &ft_fast_symlink_inode_operations;
-		inode->i_mapping->a_ops = NULL;
-	} else {
-		/* Let vfs's page_get_link() read the link in the blocks */
-		inode_nohighmem(inode);
-		inode->i_mapping->a_ops = &ft_aops;
-		inode->i_op = &ft_slow_symlink_inode_operations;
-	}
+	if (ft_is_fast_symlink(inode))
+		init_fast_symlink_inode(inode);
+	else
+		init_slow_symlink_inode(inode);
 	return 0;
 }
 
@@ -78,18 +87,31 @@ int	ft_symlink(struct inode *dir, struct dentry *dentry,
 {
 	struct inode	*inode;
 	size_t		symname_len;
+	int		err;
 
 	symname_len = strlen(symname);
-	if (symname_len > FTFS_FAST_SYMLINK_MAXPATH)
-		return -ENAMETOOLONG; // TODO support slowsymlinks creation
+	if (symname_len + 1 > dir->i_sb->s_blocksize)
+		return -ENAMETOOLONG; /* symname takes more than 1 block */
 	inode = ft_new_inode(dir, S_IFLNK | S_IRWXUGO);
 	if (IS_ERR(inode))
 		return (PTR_ERR(inode));
-	/* copy symname in the i_block array */
-	memcpy(ft_fast_symlink_path(inode), symname, symname_len);
-	inode->i_size = symname_len;
-	ft_init_symlink_inode(inode);
-
+	if (symname_len + 1 > FTFS_FAST_SYMLINK_MAXPATH) {
+		/* slow symlink, copy symname to the first block */
+		/* TODO increment the block_count in the function aquiring
+		 * the block instead */
+		inode->i_blocks = 1;
+		init_slow_symlink_inode(inode);
+		err = page_symlink(inode, symname, symname_len + 1);
+		if (WARN(err, "Writing slow symlink's symname failed")) {
+			iget_failed(inode);
+			return err;
+		}
+	} else {
+		/* fast symlink, copy symname in the i_block array */
+		memcpy(ft_fast_symlink_path(inode), symname, symname_len + 1);
+		inode->i_size = symname_len;
+		init_fast_symlink_inode(inode);
+	}
 	mark_inode_dirty(inode);
 	return ftfs_finish_inode_creation(inode, dir, dentry);
 }

@@ -81,8 +81,12 @@ found:
 /*
  * Assigns the right inode-operations, aops, and file-operations to inode
  * depending on its type, which is reflected in mode.
+ * @inode:	the inode to assign operations to
+ * @mode:	its mode
+ * @creating:	a bool representing if the inode is being created or
+ *		fetched from the disk
  */
-void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode)
+static void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode, bool creating)
 {
 	LOG("Assigning operations with mode %x (%x)", mode, mode & S_IFMT);
 	switch (mode & S_IFMT)
@@ -98,7 +102,8 @@ void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode)
 	    inode->i_fop            = &ft_dir_file_operations;
 	    break;
 	case S_IFLNK:           LOG("link");
-	    ft_init_symlink_inode(inode);
+	    if (!creating)
+		    ft_init_symlink_inode(inode);
 	    break;
 	default:                LOG("special");
 	    init_special_inode(inode, inode->i_mode, 0);
@@ -130,7 +135,7 @@ struct inode *ft_new_inode(struct inode *dir, umode_t mode)
     inode->i_private = ft_inode_info;
     inode->i_generation = 0;
     memset(ft_inode_info->blocks, 0, sizeof(ft_inode_info->blocks));
-    ft_assign_operations_to_inode(inode, mode);
+    ft_assign_operations_to_inode(inode, mode, true);
     if (insert_inode_locked(inode) < 0)
         return ERR_PTR(-EIO);
     return inode;
@@ -192,7 +197,7 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     inode->i_blocks = DIV_ROUND_UP(ft_inode->block_count * 512, sb->s_blocksize);
     LOG("ft_inode has block count = %u, so inode has block_count = %lu\n", ft_inode->block_count, inode->i_blocks);
     set_nlink(inode, ft_inode->nlinks);
-    ft_assign_operations_to_inode(inode, inode->i_mode);
+    ft_assign_operations_to_inode(inode, inode->i_mode, false);
 
     brelse(bh);
     unlock_new_inode(inode);
@@ -221,6 +226,9 @@ int ft_write_inode(struct inode *inode, struct writeback_control *wbc)
     ft_inode->ctime = inode->i_ctime.tv_sec;
     ft_inode->mtime = inode->i_mtime.tv_sec;
     ft_inode->nlinks = inode->i_nlink;
+    ft_inode->block_count = inode->i_blocks * (inode->i_sb->s_blocksize / 512);
+    /* We're saving to much blocks, but i'll start caring when ext2 will
+     * consider not having braindamaged units */
     memcpy(ft_inode->blocks, inode_info->blocks, sizeof(ft_inode->blocks));
     mark_buffer_dirty(bh);
     brelse(bh);
