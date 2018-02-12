@@ -14,7 +14,7 @@
 int ft_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh, int create);
 
 /* inode.c */
-struct inode *ft_new_inode(struct inode *dir, umode_t mode);
+struct inode *ft_new_inode(struct inode *dir, umode_t mode, dev_t rdev);
 struct inode *ft_get_inode(struct super_block *sb, ino_t ino);
 int ft_write_inode(struct inode *inode, struct writeback_control *wbc);
 int ftfs_finish_inode_creation(struct inode *inode, struct inode *dir,
@@ -110,5 +110,6 @@ struct ftfs_inode_info {
 extern       struct file_system_type         ft_type;
 extern const struct address_space_operations ft_aops;
 extern const struct inode_operations         ft_file_inode_operations;
+extern const struct inode_operations         ft_special_inode_operations;
 extern const struct file_operations          ft_file_operations;
 extern const struct file_operations          ft_dir_file_operations;

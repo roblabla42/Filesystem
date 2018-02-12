@@ -83,10 +83,14 @@ found:
  * depending on its type, which is reflected in mode.
  * @inode:	the inode to assign operations to
  * @mode:	its mode
+ * @rdev:	used only for special inodes
  * @creating:	a bool representing if the inode is being created or
  *		fetched from the disk
  */
-static void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode, bool creating)
+static void	ft_assign_operations_to_inode(struct inode *inode,
+						umode_t mode,
+						dev_t rdev,
+						bool creating)
 {
 	LOG("Assigning operations with mode %x (%x)", mode, mode & S_IFMT);
 	switch (mode & S_IFMT)
@@ -106,13 +110,21 @@ static void	ft_assign_operations_to_inode(struct inode *inode, umode_t mode, boo
 		    ft_init_symlink_inode(inode);
 	    break;
 	default:                LOG("special");
-	    init_special_inode(inode, inode->i_mode, 0);
+	    /* BLK - CHR - FIFO */
+	    LOG("Mode is : %x", inode->i_mode);
+	    inode->i_op             = &ft_special_inode_operations;
+	    init_special_inode(inode, inode->i_mode, rdev);
 	    break;
 	}
 }
 
-
-struct inode *ft_new_inode(struct inode *dir, umode_t mode)
+/*
+ * Allocates a new inode and gives it the right inode-operations
+ * @dir:	the parent of this inode
+ * @mode:	its mode
+ * @rdev:	used only for special inodes
+ */
+struct inode *ft_new_inode(struct inode *dir, umode_t mode, dev_t rdev)
 {
     // TODO: Clean-up in error handling
     struct inode *inode;
@@ -135,7 +147,7 @@ struct inode *ft_new_inode(struct inode *dir, umode_t mode)
     inode->i_private = ft_inode_info;
     inode->i_generation = 0;
     memset(ft_inode_info->blocks, 0, sizeof(ft_inode_info->blocks));
-    ft_assign_operations_to_inode(inode, mode, true);
+    ft_assign_operations_to_inode(inode, mode, rdev, true);
     if (insert_inode_locked(inode) < 0)
         return ERR_PTR(-EIO);
     return inode;
@@ -147,6 +159,7 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     struct buffer_head *bh;
     struct ftfs_inode *ft_inode;
     struct ftfs_inode_info *ft_inode_info;
+    dev_t rdev;
     int ret;
 
     LOG("Getting inode %ld", ino);
@@ -195,9 +208,11 @@ struct inode *ft_get_inode(struct super_block *sb, ino_t ino)
     inode->i_atime.tv_nsec = inode->i_ctime.tv_nsec = inode->i_mtime.tv_nsec = 0;
     /* block_count is in units of 512 bytes, convert it to blocks */
     inode->i_blocks = DIV_ROUND_UP(ft_inode->block_count * 512, sb->s_blocksize);
-    LOG("ft_inode has block count = %u, so inode has block_count = %lu\n", ft_inode->block_count, inode->i_blocks);
     set_nlink(inode, ft_inode->nlinks);
-    ft_assign_operations_to_inode(inode, inode->i_mode, false);
+    /* If inode is a fifo, its rdev is stored in the blocks array.
+     * We get it and let assign_operation decide if it's actually one or not */
+    rdev = ft_inode->blocks[0];
+    ft_assign_operations_to_inode(inode, inode->i_mode, rdev, false);
 
     brelse(bh);
     unlock_new_inode(inode);
@@ -215,6 +230,7 @@ int ft_write_inode(struct inode *inode, struct writeback_control *wbc)
     struct ftfs_inode_info *inode_info;
     int ret;
 
+    LOG("Writing inode ino %lu", inode->i_ino);
     if ((ret = get_raw_inode(inode->i_sb, inode->i_ino, &ft_inode, &bh)) != 0)
         return ret;
     inode_info = (struct ftfs_inode_info*)inode->i_private;
@@ -229,22 +245,16 @@ int ft_write_inode(struct inode *inode, struct writeback_control *wbc)
     ft_inode->block_count = inode->i_blocks * (inode->i_sb->s_blocksize / 512);
     /* We're saving to much blocks, but i'll start caring when ext2 will
      * consider not having braindamaged units */
-    memcpy(ft_inode->blocks, inode_info->blocks, sizeof(ft_inode->blocks));
+    if (S_ISCHR(inode->i_mode) || S_ISBLK(inode->i_mode)) {
+    	/* We store the rdev in the blocks array */
+	ft_inode->blocks[0] = inode->i_rdev;
+	ft_inode->blocks[1] = 0; /* Mark array termination */
+    } else {
+	/* Regular file/dir, or symlink */
+	memcpy(ft_inode->blocks, inode_info->blocks, sizeof(ft_inode->blocks));
+    }
     mark_buffer_dirty(bh);
     brelse(bh);
-    return 0;
-}
-
-static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
-{
-    // TODO: create inode
-    struct inode *inode = ft_get_inode(dir->i_sb, get_next_ino());
-
-    if (!inode)
-        return -ENOSPC;
-    d_instantiate(dentry, inode);
-    dget(dentry);
-    dir->i_mtime = dir->i_ctime = current_time(inode);
     return 0;
 }
 
@@ -263,21 +273,31 @@ int ftfs_finish_inode_creation(struct inode *inode, struct inode *dir,
 	} else {
 		unlock_new_inode(inode);
 		d_instantiate(dentry, inode);
+		mark_inode_dirty(inode);
 		return 0;
 	}
+}
+
+/* User wants to create a special inode */
+static int ftfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+{
+	struct inode *inode;
+
+	inode = ft_new_inode(dir, mode, dev);
+	if (IS_ERR(inode))
+	    return PTR_ERR(inode);
+
+	return ftfs_finish_inode_creation(inode, dir, dentry);
 }
 
 /* User wants to create a new inode in a dir */
 static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
-	struct inode *inode;
-
-	inode = ft_new_inode(dir, mode);
-	if (IS_ERR(inode))
-	    return PTR_ERR(inode);
-
-	return ftfs_finish_inode_creation(inode, dir, dentry);
-	//return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
+	/*
+	 * We just create a regular mknod :)
+	 * excl is ignored, don't know what it's for anyway
+	 */
+	return ftfs_mknod(dir, dentry, mode | S_IFREG, 0);
 }
 
 /*
@@ -349,7 +369,7 @@ static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
     int err;
 
     LOG("RUNNING MKDIR FOR %s with mode %x", dentry->d_name.name, mode | S_IFDIR);
-    inode = ft_new_inode(dir, mode | S_IFDIR);
+    inode = ft_new_inode(dir, mode | S_IFDIR, 0);
     if (IS_ERR(inode))
         return PTR_ERR(inode);
 
@@ -394,6 +414,6 @@ static const struct inode_operations ft_dir_inode_operations = {
     .symlink    = ft_symlink,
     .mkdir      = ftfs_mkdir,
     .rmdir      = simple_rmdir,
-    //.mknod      = ftfs_mknod,
+    .mknod      = ftfs_mknod,
     .rename     = simple_rename,
 };

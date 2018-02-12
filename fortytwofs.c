@@ -221,6 +221,11 @@ const struct inode_operations ft_file_inode_operations = {
     .getattr        = simple_getattr,
 };
 
+const struct inode_operations ft_special_inode_operations = {
+    .setattr        = simple_setattr,
+    .getattr        = simple_getattr,
+};
+
 const struct file_operations ft_file_operations = {
     .open         = generic_file_open,
     .read_iter    = generic_file_read_iter,

@@ -92,7 +92,7 @@ int	ft_symlink(struct inode *dir, struct dentry *dentry,
 	symname_len = strlen(symname);
 	if (symname_len + 1 > dir->i_sb->s_blocksize)
 		return -ENAMETOOLONG; /* symname takes more than 1 block */
-	inode = ft_new_inode(dir, S_IFLNK | S_IRWXUGO);
+	inode = ft_new_inode(dir, S_IFLNK | S_IRWXUGO, 0);
 	if (IS_ERR(inode))
 		return (PTR_ERR(inode));
 	if (symname_len + 1 > FTFS_FAST_SYMLINK_MAXPATH) {
