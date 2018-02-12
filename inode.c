@@ -72,10 +72,10 @@ found:
     // TODO: Make sure nobody else claims our buffer !
     bh->b_data[next / 8] |= 1 << (next % 8);
     // TODO: use inode_count instead of sb->blocksize * 8
-    LOG("Reserved block %ld", next + i * (sb->s_blocksize * 8));
+    LOG("Reserved ino %ld", next + i * (sb->s_blocksize * 8));
     mark_buffer_dirty(bh);
     brelse(bh);
-    return next + i * (sb->s_blocksize * 8);
+    return next + i * (sb->s_blocksize * 8) + 1;
 }
 
 /*
