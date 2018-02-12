@@ -373,13 +373,12 @@ static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
     if (IS_ERR(inode))
         return PTR_ERR(inode);
 
-    // Very simple
+    // Initialize the direntry structure so ft_insert_inode_in_dir works.
     LOG("Getting page");
     page = ft_get_page(inode, 0);
     if (IS_ERR(page))
         return PTR_ERR(page);
-    // TODO: Lock page
-    LOG("Locking page");
+    LOG("Locking page"); // TODO: Lock page ?
     lock_page(page);
     struct ftfs_dir *firstdir = page_address(page);
     LOG("Page at address %p", firstdir);
@@ -392,6 +391,7 @@ static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
         goto err;
     if ((err = ft_insert_inode_in_dir(inode, "..", dir->i_ino)))
         goto err;
+
     if ((err = ft_insert_inode_in_dir(dir, dentry->d_name.name, inode->i_ino)))
         goto err;
 
@@ -406,11 +406,55 @@ err:
     return err;
 }
 
+struct ft_unlink_ctx {
+    char *name;
+    int inode;
+};
+
+static int ft_unlink_emit(struct ftfs_dir *dir, void *data) {
+    struct ft_unlink_ctx *ctx = (struct ft_unlink_ctx*)data;
+    if (strlen(ctx->name) == dir->name_len && ft_strncmp(ctx->name, dir->name, dir->name_len) == 0) {
+        ctx->inode = dir->inode;
+        dir->inode = 0;
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+// The actual deleting of the inode is done indirectly by
+// super_operations->evict_inode. this will just decrease the link count. The
+// VFS will take care of calling evict_inode if the link count hits 0.
+static int ft_unlink(struct inode *inode, struct dentry *dentry)
+{
+    ft_unlink_ctx ctx;
+    loff_t off = 0;
+    int ret;
+
+    LOG("Getting page");
+    ctx.inode = 0;
+    ctx.name = dentry->d_name.name;
+    // First, remove from the directory
+    if ((ret = ft_iterate(inode, ft_unlink_emit, 0, &ctx)) < 0)
+        return ret;
+    // If we haven't found anything, return ENOENT
+    if (ctx.inode == 0)
+        return -ENOENT;
+
+    // Get the inode
+    struct inode *inode = ft_get_inode(inode->i_sb, ctx.inode);
+    if (inode == NULL)
+        return -ENOSPC;
+
+    // Decrease the hard link count
+    inode_dec_link_count(inode);
+}
+
 static const struct inode_operations ft_dir_inode_operations = {
     .create     = ftfs_create,
     .lookup     = ft_lookup,
     .link       = ft_hard_link,
-    .unlink     = simple_unlink,
+    .unlink     = ft_unlink,
     .symlink    = ft_symlink,
     .mkdir      = ftfs_mkdir,
     .rmdir      = simple_rmdir,
