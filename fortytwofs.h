@@ -21,7 +21,7 @@ int ftfs_finish_inode_creation(struct inode *inode, struct inode *dir,
 					struct dentry *dentry);
 
 struct ftfs_dir;
-typedef int (*ft_iterator)(struct ftfs_dir*, void*);
+typedef int (*ft_iterator)(struct ftfs_dir*, void*, int*);
 
 int ft_iterate(struct inode *inode, ft_iterator it, loff_t *pos, void *data);
 int ft_insert_inode_in_dir(struct inode *dir, const char *name, ino_t ino);

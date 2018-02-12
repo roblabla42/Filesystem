@@ -325,7 +325,7 @@ struct lookup_ctx {
     size_t name_len;
 };
 
-static int lookup_emit(struct ftfs_dir *dir, void *data)
+static int lookup_emit(struct ftfs_dir *dir, void *data, int *dirty)
 {
     struct lookup_ctx *ctx = (struct lookup_ctx*)data;
     if (dir->name_len == ctx->name_len &&
@@ -411,10 +411,11 @@ struct ft_unlink_ctx {
     int inode;
 };
 
-static int ft_unlink_emit(struct ftfs_dir *dir, void *data) {
+static int ft_unlink_emit(struct ftfs_dir *dir, void *data, int *dirty) {
     struct ft_unlink_ctx *ctx = (struct ft_unlink_ctx*)data;
-    if (strlen(ctx->name) == dir->name_len && ft_strncmp(ctx->name, dir->name, dir->name_len) == 0) {
+    if (strlen(ctx->name) == dir->name_len && strncmp(ctx->name, dir->name, dir->name_len) == 0) {
         ctx->inode = dir->inode;
+        *dirty = 1;
         dir->inode = 0;
         return 0;
     } else {
@@ -427,7 +428,7 @@ static int ft_unlink_emit(struct ftfs_dir *dir, void *data) {
 // VFS will take care of calling evict_inode if the link count hits 0.
 static int ft_unlink(struct inode *inode, struct dentry *dentry)
 {
-    ft_unlink_ctx ctx;
+    struct ft_unlink_ctx ctx;
     loff_t off = 0;
     int ret;
 
@@ -442,12 +443,14 @@ static int ft_unlink(struct inode *inode, struct dentry *dentry)
         return -ENOENT;
 
     // Get the inode
-    struct inode *inode = ft_get_inode(inode->i_sb, ctx.inode);
-    if (inode == NULL)
+    struct inode *child_inode = ft_get_inode(inode->i_sb, ctx.inode);
+    if (child_inode == NULL)
         return -ENOSPC;
 
     // Decrease the hard link count
-    inode_dec_link_count(inode);
+    inode_dec_link_count(child_inode);
+
+    return 0;
 }
 
 static const struct inode_operations ft_dir_inode_operations = {

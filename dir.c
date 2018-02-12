@@ -110,6 +110,7 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
     struct page *page;
     struct ftfs_dir *dir;
     int current_page;
+    int dirty, result;
     void *kaddr;
     loff_t default_pos = 0;
 
@@ -134,7 +135,11 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
             // when using rm.
             if (dir->inode != 0) {
                 LOG("%.*s is inode %d", dir->name_len, dir->name, dir->inode);
-                if (!emit(dir, data)) {
+                dirty = 0;
+                result = emit(dir, data, &dirty);
+                if (dirty)
+                    set_page_dirty(page);
+                if (!result) {
                     ft_put_page(page);
                     return 0;
                 }
@@ -147,7 +152,7 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
     return 0;
 }
 
-static int readdir_dir_emit(struct ftfs_dir *dir, void *data)
+static int readdir_dir_emit(struct ftfs_dir *dir, void *data, int *dirty)
 {
     return dir_emit(data, dir->name, dir->name_len, dir->inode, DT_UNKNOWN);
 }
