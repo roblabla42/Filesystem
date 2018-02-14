@@ -1,5 +1,6 @@
 #include "fortytwofs.h"
 #include <linux/buffer_head.h>
+#include <linux/fsnotify.h>
 #include <linux/slab.h>
 
 static const struct inode_operations ft_dir_inode_operations;
@@ -306,7 +307,7 @@ static int ftfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, b
  *
  * The inode->i_link is incremented.
  */
-static int ft_hard_link(struct dentry *target, struct inode *dir, struct dentry *dentry)
+static int __ft_hard_link(struct dentry *target, struct inode *dir, struct dentry *dentry)
 {
 	struct inode	*target_inode = d_inode(target);
 	int		err;
@@ -315,7 +316,17 @@ static int ft_hard_link(struct dentry *target, struct inode *dir, struct dentry 
 	if ((err = ft_insert_inode_in_dir(dir, dentry->d_name.name, target_inode->i_ino)))
 		return err;
 	inode_inc_link_count(target_inode);
-	d_instantiate(dentry, target_inode);
+	return 0;
+}
+
+/* Wrapper of __ft_hard_link wich also calls d_instanciate(). */
+static int ft_hard_link(struct dentry *target, struct inode *dir, struct dentry *dentry)
+{
+	int err;
+
+	if ((err = __ft_hard_link(target, dir, dentry)))
+		return err;
+	d_instantiate(dentry, target->d_inode);
 	return 0;
 }
 
@@ -459,14 +470,37 @@ static int ft_rename(	struct inode *old_dir, struct dentry *old_dentry,
 			unsigned int flags)
 {
 	int err;
+	struct inode *new_inode = new_dentry->d_inode;
 
-	(void)flags; /* Really don't care */
+	if (flags & ~RENAME_NOREPLACE)
+		return -EINVAL; /* We don't support those other fancy flags */
 
+	/* If destination already exists, delete it */
+	if (new_inode)
+	{
+		if (S_ISDIR(new_inode->i_mode))
+			/* TODO support dir -> empty dir
+			 * 1) check destination is empty dir
+			 * 2) rmdir
+			 * 3) ??? */
+			return -EISDIR;
+		err = ft_unlink(new_dir, new_dentry);
+		if (err)
+			return err;
+		/* The job done by vfs_unlink() usually */
+		fsnotify_link_count(new_inode);
+		d_delete(new_dentry);
+	}
 	/* Simply add it in the new_dir and remove it from its current dir */
-	err = ft_hard_link(old_dentry, new_dir, new_dentry);
+	err = __ft_hard_link(old_dentry, new_dir, new_dentry);
 	if (err)
 		return err;
 	return ft_unlink(old_dir, old_dentry);
+
+	/*
+	 * TODO If we're moving a directory we must update its '..' direntry
+	 * to point to its new parent
+	 */
 }
 
 static const struct inode_operations ft_dir_inode_operations = {
