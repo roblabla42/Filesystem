@@ -453,6 +453,22 @@ static int ft_unlink(struct inode *inode, struct dentry *dentry)
     return 0;
 }
 
+/* Changes an inode's name and location */
+static int ft_rename(	struct inode *old_dir, struct dentry *old_dentry,
+			struct inode *new_dir, struct dentry *new_dentry,
+			unsigned int flags)
+{
+	int err;
+
+	(void)flags; /* Really don't care */
+
+	/* Simply add it in the new_dir and remove it from its current dir */
+	err = ft_hard_link(old_dentry, new_dir, new_dentry);
+	if (err)
+		return err;
+	return ft_unlink(old_dir, old_dentry);
+}
+
 static const struct inode_operations ft_dir_inode_operations = {
     .create     = ftfs_create,
     .lookup     = ft_lookup,
@@ -462,5 +478,5 @@ static const struct inode_operations ft_dir_inode_operations = {
     .mkdir      = ftfs_mkdir,
     .rmdir      = simple_rmdir,
     .mknod      = ftfs_mknod,
-    .rename     = simple_rename,
+    .rename     = ft_rename,
 };
