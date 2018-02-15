@@ -28,6 +28,9 @@ int ft_insert_inode_in_dir(struct inode *dir, const char *name, ino_t ino);
 struct page *ft_get_page(struct inode *inode, int nbr);
 void ft_put_page(struct page *page);
 
+/* dir.c */
+int ft_is_dir_not_empty(struct inode *inode);
+
 /* symlink.c */
 int	ft_init_symlink_inode(struct inode *inode);
 int	ft_symlink(struct inode *dir, struct dentry *dentry,

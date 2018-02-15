@@ -117,7 +117,8 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
     if (pos == NULL)
         pos = &default_pos;
 
-    // TODO: Maybe I should check that we're actually, you know, a directory ?
+    if (!S_ISDIR(inode->i_mode))
+            return -ENOTDIR;
 
     while (*pos < inode->i_size) {
         current_page = *pos / PAGE_SIZE;
@@ -150,6 +151,40 @@ int ft_iterate(struct inode *inode, ft_iterator emit, loff_t *pos, void *data) {
         ft_put_page(page);
     }
     return 0;
+}
+
+static int is_dir_not_empty_emit(struct ftfs_dir *dir, void *data, int *dirty)
+{
+	(void)dirty;
+	if (dir->name_len < 1) {
+		*(int *)data = -EIO;
+		return 0;
+	}
+	if (!(
+		(dir->name_len == 1 && strncmp(".", dir->name, 1) == 0)
+		||
+		(dir->name_len == 2 && strncmp("..", dir->name, 2) == 0)
+	   )) {
+		*(int *)data = -ENOTEMPTY;
+		return 0;
+	}
+	return 1;
+}
+
+/*
+ * Checks that a directory contains only the entries '.' and '..'
+ * The checks are simply done by strcmp the name of the direntries
+ * Returns 0 if empty, -ENOTEMPTY if not empty and other values on errors
+ */
+int ft_is_dir_not_empty(struct inode *inode)
+{
+	int result = 0;
+	int err;
+
+	err = ft_iterate(inode, is_dir_not_empty_emit, NULL, &result);
+	if (err)
+		return err;
+	return result;
 }
 
 static int readdir_dir_emit(struct ftfs_dir *dir, void *data, int *dirty)

@@ -406,6 +406,9 @@ static int ftfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
     if ((err = ft_insert_inode_in_dir(dir, dentry->d_name.name, inode->i_ino)))
         goto err;
 
+    inode_inc_link_count(inode); /* .  points to it now */
+    inode_inc_link_count(dir);   /* .. points to it now */
+
     unlock_new_inode(inode);
     d_instantiate(dentry, inode);
     return 0;
@@ -464,6 +467,21 @@ static int ft_unlink(struct inode *inode, struct dentry *dentry)
     return 0;
 }
 
+static int ft_rmdir(struct inode *parent, struct dentry *dentry)
+{
+	struct inode	*to_delete = dentry->d_inode;
+	int		err;
+
+	if ((err = ft_is_dir_not_empty(to_delete)))
+		return (err);
+	/* Remove it from its parent */
+	if ((err = ft_unlink(parent, dentry)))
+		return (err);
+	inode_dec_link_count(to_delete); /* .  link */
+	inode_dec_link_count(parent);    /* .. link */
+	return 0;
+}
+
 /* Changes an inode's name and location */
 static int ft_rename(	struct inode *old_dir, struct dentry *old_dentry,
 			struct inode *new_dir, struct dentry *new_dentry,
@@ -510,7 +528,7 @@ static const struct inode_operations ft_dir_inode_operations = {
     .unlink     = ft_unlink,
     .symlink    = ft_symlink,
     .mkdir      = ftfs_mkdir,
-    .rmdir      = simple_rmdir,
+    .rmdir      = ft_rmdir,
     .mknod      = ftfs_mknod,
     .rename     = ft_rename,
 };
