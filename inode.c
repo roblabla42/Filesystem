@@ -497,18 +497,16 @@ static int ft_rename(	struct inode *old_dir, struct dentry *old_dentry,
 	/* If destination already exists, delete it */
 	if (new_inode)
 	{
-		if (S_ISDIR(new_inode->i_mode))
-			/* TODO support dir -> empty dir
-			 * 1) check destination is empty dir
-			 * 2) rmdir
-			 * 3) ??? */
-			return -EISDIR;
-		err = ft_unlink(new_dir, new_dentry);
-		if (err)
-			return err;
-		/* The job done by vfs_unlink() usually */
-		fsnotify_link_count(new_inode);
-		d_delete(new_dentry);
+		if (S_ISDIR(new_inode->i_mode)) {
+			if ((err = ft_rmdir(new_dir, new_dentry)))
+				return err;
+		} else {
+			if ((err = ft_unlink(new_dir, new_dentry)))
+				return err;
+			/* The job done by vfs_unlink() usually */
+			fsnotify_link_count(new_inode);
+			d_delete(new_dentry);
+		}
 	}
 	/* Simply add it in the new_dir and remove it from its current dir */
 	err = __ft_hard_link(old_dentry, new_dir, new_dentry);
