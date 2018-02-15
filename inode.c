@@ -489,6 +489,7 @@ static int ft_rename(	struct inode *old_dir, struct dentry *old_dentry,
 {
 	int err;
 	struct inode *new_inode = new_dentry->d_inode;
+	struct inode *old_inode = old_dentry->d_inode;
 
 	if (flags & ~RENAME_NOREPLACE)
 		return -EINVAL; /* We don't support those other fancy flags */
@@ -513,12 +514,20 @@ static int ft_rename(	struct inode *old_dir, struct dentry *old_dentry,
 	err = __ft_hard_link(old_dentry, new_dir, new_dentry);
 	if (err)
 		return err;
-	return ft_unlink(old_dir, old_dentry);
+	err = ft_unlink(old_dir, old_dentry);
+	if (err)
+		return err;
 
-	/*
-	 * TODO If we're moving a directory we must update its '..' direntry
-	 * to point to its new parent
-	 */
+	/* If we're moving a directory we must update its '..' direntry
+	 * to point to its new parent */
+	if (S_ISDIR(old_inode->i_mode) && old_dir->i_ino != new_dir->i_ino) {
+		 err = ft_update_dotdot(old_inode, new_dir->i_ino);
+		 if (err)
+			 return (err);
+		 inode_inc_link_count(new_dir); /* gained .. link */
+		 inode_dec_link_count(old_dir); /*   lost .. link */
+	}
+	 return 0;
 }
 
 static const struct inode_operations ft_dir_inode_operations = {

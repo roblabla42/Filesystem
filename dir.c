@@ -187,6 +187,28 @@ int ft_is_dir_not_empty(struct inode *inode)
 	return result;
 }
 
+static int update_dotdot_emit(struct ftfs_dir *dir, void *data, int *dirty)
+{
+	if (dir->name_len == 2 && strncmp("..", dir->name, 2) == 0) {
+		dir->inode = *(unsigned long long *)data;
+		*dirty = 1;
+		return 0;
+	}
+	return 1;
+}
+
+/*
+ * Updates the '..' entry in dir to point to ino.
+ * Used when moving a directory to make its '..' point to its new parent.
+ *
+ * The caller must not forget to update the links counts of the old
+ * and new parents.
+ */
+int ft_update_dotdot(struct inode *dir, unsigned long long ino)
+{
+	return ft_iterate(dir, update_dotdot_emit, NULL, &ino);
+}
+
 static int readdir_dir_emit(struct ftfs_dir *dir, void *data, int *dirty)
 {
     return dir_emit(data, dir->name, dir->name_len, dir->inode, DT_UNKNOWN);

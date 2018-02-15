@@ -30,6 +30,7 @@ void ft_put_page(struct page *page);
 
 /* dir.c */
 int ft_is_dir_not_empty(struct inode *inode);
+int ft_update_dotdot(struct inode *dir, unsigned long long ino);
 
 /* symlink.c */
 int	ft_init_symlink_inode(struct inode *inode);
