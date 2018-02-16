@@ -39,6 +39,8 @@ finished:
     LOG("Reserved block %d", (1024 / sb->s_blocksize) + i * fsinfo->super_block->blocks_per_group + next);
     mark_buffer_dirty(bh);
     brelse(bh);
+    /* Keep the superblock up to date */
+    fsinfo->super_block->free_blocks_count--; /* TODO lock the superblock */
     // We don't zero-out the block here ! Instead, we expect the user to call
     // set_buffer_new, which asks the kernel to zero-out the buffer when it's
     // loaded into the page cache.

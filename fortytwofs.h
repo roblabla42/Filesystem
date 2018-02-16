@@ -44,8 +44,8 @@ struct ftfs_super_block {
     __le32 inodes_count;
     __le32 block_count;
     __le32 unused1;
-    __le32 free_blocks_count; //TODO keep me up to date
-    __le32 free_inodes_count; //TODO keep me up to date
+    __le32 free_blocks_count;
+    __le32 free_inodes_count;
     __le32 unused2;
     __le32 log_block_size;
     __le32 unused3;

@@ -76,6 +76,8 @@ found:
     LOG("Reserved ino %ld", next + i * (sb->s_blocksize * 8));
     mark_buffer_dirty(bh);
     brelse(bh);
+    /* Keep the superblock up to date */
+    fsinfo->super_block->free_inodes_count--; /* TODO lock the superblock */
     return next + i * (sb->s_blocksize * 8) + 1;
 }
 
