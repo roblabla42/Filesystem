@@ -3,6 +3,7 @@
 #include <uapi/linux/magic.h>
 #include <linux/slab.h>
 #include <linux/mpage.h>
+#include <linux/statfs.h>
 
 static int ft_acquire_block(struct super_block *sb) {
     struct ftfs_fs_info *fsinfo;
@@ -239,6 +240,30 @@ const struct file_operations ft_file_operations = {
 
 extern const struct super_operations ft_ops;
 
+static int ft_statfs(struct dentry *dentry, struct kstatfs *buf)
+{
+	struct super_block *sb = dentry->d_sb;
+	struct ftfs_fs_info *fsinfo = (struct ftfs_fs_info*)sb->s_fs_info;
+	struct ftfs_super_block *ft_sb = fsinfo->super_block;
+
+	buf->f_type    =    sb->s_magic;              /* magic */
+	buf->f_bsize   =    sb->s_blocksize;          /* optimal transfer block size */
+	buf->f_blocks  = ft_sb->block_count;          /* total data blocks */
+	buf->f_bfree   = ft_sb->free_blocks_count;    /* total of free blocks */
+	buf->f_bavail  = ft_sb->free_blocks_count;    /* total of available blocks to
+	                                               * unprivileged user.
+                                                       * The same as f_bfree since we don't implement
+                                                       * block reservation */
+	buf->f_files   = ft_sb->inodes_count;         /* total file nodes in filesystem */
+	buf->f_ffree   = ft_sb->free_inodes_count;    /* free  file nodes in filesystem */
+	buf->f_fsid    = (__kernel_fsid_t) { 0 };     /* "nobody knows what f_fsid is supposed to contain" */
+	buf->f_namelen = ft_get_max_filename_len(sb); /* maximum length of filenames */
+	buf->f_frsize  = 0;                           /* no idea what this one is for */
+	buf->f_flags   = sb->s_flags;                 /* they match the SB_* flags so we can simply copy them */
+
+	return 0;
+}
+
 static int ft_fill_super(struct super_block *sb, void *data, int silent)
 { // TODO: recuperer des meilleurs infos: http://lxr.free-electrons.com/source/fs/ext2/super.c#L785
     struct inode *root_inode;
@@ -358,7 +383,7 @@ struct file_system_type ft_type = {
 };
 
 const struct super_operations ft_ops = {
-    .statfs       = simple_statfs,
+    .statfs       = ft_statfs,
     .write_inode  = ft_write_inode,
     .show_options = NULL,            /* default show_options is good enough */
     .put_super    = ft_put_super,

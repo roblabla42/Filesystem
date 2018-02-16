@@ -41,9 +41,12 @@ int	ft_symlink(struct inode *dir, struct dentry *dentry,
 
 // The super-block
 struct ftfs_super_block {
-    __le32 unused1;
+    __le32 inodes_count;
     __le32 block_count;
-    __le32 unused2[4];
+    __le32 unused1;
+    __le32 free_blocks_count; //TODO keep me up to date
+    __le32 free_inodes_count; //TODO keep me up to date
+    __le32 unused2;
     __le32 log_block_size;
     __le32 unused3;
     __le32 blocks_per_group;
@@ -110,6 +113,12 @@ struct ftfs_inode_info {
  */
 #define ft_get_inode_info(inode)	\
 	((struct ftfs_inode_info *)inode->i_private)
+
+static inline long ft_get_max_filename_len(struct super_block *sb)
+{
+	/* The maxfilename is a direntry taking the whole block */
+	return (sb->s_blocksize - sizeof(struct ftfs_dir));
+}
 
 extern       struct file_system_type         ft_type;
 extern const struct address_space_operations ft_aops;
