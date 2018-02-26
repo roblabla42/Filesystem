@@ -81,6 +81,29 @@ found:
     return next + i * (sb->s_blocksize * 8) + 1;
 }
 
+static int dealloc_raw_inode(struct inode *inode)
+{
+    struct ftfs_fs_info *fsinfo;
+    struct ftfs_block_group *group;
+    struct buffer_head *bh;
+    struct super_block *sb = inode->i_sb;
+    unsigned bgd_idx;
+
+    fsinfo = (struct ftfs_fs_info*)sb->s_fs_info;
+    // Get block group
+    bgd_idx = (inode->i_ino + 1) / (sb->s_blocksize * 8);
+    LOG("Getting inode from bgd idx %u", bgd_idx);
+    if (bgd_idx < fsinfo->super_block->block_count / fsinfo->super_block->blocks_per_group) {
+        group = fsinfo->group_desc[bgd_idx];
+        if ((bh = sb_bread(sb, group->inode_bitmap_block)) == NULL)
+            return -ENOMEM;
+        bh->b_data[(inode->i_ino + 1) - (bgd_idx * (sb->s_blocksize * 8))] &= ~(1 << (inode->i_ino + 1) % 8);
+    } else {
+        return -EINVAL;
+    }
+    return 0;
+}
+
 /*
  * Assigns the right inode-operations, aops, and file-operations to inode
  * depending on its type, which is reflected in mode.
@@ -259,6 +282,28 @@ int ft_write_inode(struct inode *inode, struct writeback_control *wbc)
     mark_buffer_dirty(bh);
     brelse(bh);
     return 0;
+}
+
+#define DIV_CEIL(x, y) ((x) % (y)) ? ((x) / (y)) + 1 : ((x) / (y))
+
+void ft_evict_inode(struct inode *inode)
+{
+    int want_delete = 0;
+    if (!inode->i_nlink && is_bad_inode(inode))
+        want_delete = 1;
+    truncate_inode_pages_final(&inode->i_data);
+
+    if (want_delete) {
+        // TODO: truncate blocks
+        inode->i_size = 0;
+        //ft_truncate_blocks(inode, 0);
+    }
+
+    invalidate_inode_buffers(inode);
+    clear_inode(inode);
+
+    if (want_delete)
+        dealloc_raw_inode(inode);
 }
 
 /* Insert the inode in the dir, mark it as ready and instantiate its d_entry */
