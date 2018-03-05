@@ -16,7 +16,7 @@ typedef uint32_t __le32;
 
 #define MKFS_START_OFFSET 	1024 /* Boot record */
 #define MKFS_BLOCK_SIZE   	1024
-#define MKFS_BLOCK_SIZE_LOG	10   /* 1024 = 2^10 */
+#define MKFS_BLOCK_SIZE_LOG	0   /* 1024 << 0 = 1024 */
 
 /* To compute the size of the inodes table */
 #define MKFS_INODES_PER_TABLE_BLOCK	(MKFS_BLOCK_SIZE / sizeof(struct ftfs_inode))
@@ -25,13 +25,9 @@ typedef uint32_t __le32;
 #define MKFS_GROUP_DESC_PER_TABLE_BLOCK	(MKFS_BLOCK_SIZE / sizeof(struct ftfs_block_group))
 
 #define MKFS_BLOCKS_PER_GROUP		(MKFS_BLOCK_SIZE * 8) /* max of block bitmap block */
-#define MKFS_INODES_PER_GROUP		(MKFS_BLOCK_SIZE * 8) /* max of inode bitmap block */
-#define MKFS_INODES_TABLE_BLOCKS	(MKFS_INODES_PER_GROUP / MKFS_INODES_PER_TABLE_BLOCK)
-#define MKFS_GROUP_SIZE			( MKFS_BLOCK_SIZE /* block bitmap */ \
-					+ MKFS_BLOCK_SIZE /* inode bitmap */ \
-					+ MKFS_INODES_TABLE_BLOCKS * MKFS_BLOCK_SIZE /* inode table */ \
-					+ MKFS_BLOCKS_PER_GROUP * MKFS_BLOCK_SIZE /* data blocks */ \
-					)
+#define MKFS_INODES_TABLE_BLOCKS	(MKFS_BLOCKS_PER_GROUP / 16) /* let's use 1/16 of the blocks for the inode table */
+#define MKFS_INODES_PER_GROUP		(MKFS_INODES_TABLE_BLOCKS * MKFS_INODES_PER_TABLE_BLOCK)
+#define MKFS_GROUP_SIZE			(MKFS_BLOCKS_PER_GROUP * MKFS_BLOCK_SIZE)
 
 /* The smallest group we support : it has only 1 data block */
 #define MKFS_SMALLEST_GROUP_SIZE	( MKFS_BLOCK_SIZE /* block bitmap */ \
@@ -46,6 +42,11 @@ typedef uint32_t __le32;
 					+ MKFS_INODES_TABLE_BLOCKS /* inode table */	\
 					)
 
+/* The number of data blocks in a simple empty group.
+ * This value is not accurate for the first group, where you also need to remove the blocks for the sb and bgd */
+#define MKFS_FREE_BLOCKS_PER_GROUP	(MKFS_BLOCKS_PER_GROUP - MKFS_GROUP_OVERHEAD_BLOCKS)
+
+
 /* The minimum size of the image we have to format */
 #define MKFS_MIN_IMAGE_SIZE						\
 	( MKFS_START_OFFSET	/* Boot record */			\
@@ -54,6 +55,7 @@ typedef uint32_t __le32;
 	+ MKFS_SMALLEST_GROUP_SIZE					\
 	)
 
+/* Offset to the block group descriptors table from the start of the file */
 #define MKFS_GROUP_TABLE_OFFSET					\
 	( MKFS_START_OFFSET /* Boot record */			\
 	+ MKFS_BLOCK_SIZE /* Superblock */			\
@@ -78,9 +80,6 @@ typedef uint32_t __le32;
 
 /* To write zeros to a full block */
 char	zero_block[MKFS_BLOCK_SIZE] = {0};
-
-/* A bitmap with the 10 first ino reserved */
-char	inode_bitmap_first[MKFS_BLOCK_SIZE] = { 0xFF , 0x03 };
 
 struct ftfs_super_block ft_sb = {
 	.inodes_count      = 0,
@@ -115,13 +114,13 @@ struct	mkfs_root_dir {
 
 struct	mkfs_root_dir	root_dir = {
 	.dot = {
-		.inode		= 1,
+		.inode		= 2,
 		.len		= 12,
 		.name_len	= 1,
 	},
 	.dot_name	= ".",
 	.dotdot	= {
-		.inode		= 1,
+		.inode		= 2,
 		.len		= MKFS_BLOCK_SIZE - 12, /* take all the remaining space */
 		.name_len	= 2,
 	},
@@ -135,7 +134,8 @@ struct mkfs_infos {
 	off_t	last_block_group_size; /* in blocks */
 };
 
-void	__write_block(int fd, int block_nbr, void *data)
+/* Fill a block with zeroes */
+void	write_zero_block(int fd, int block_nbr)
 {
 	off_t	saved_pos;
 
@@ -144,28 +144,44 @@ void	__write_block(int fd, int block_nbr, void *data)
 	EXIT_IF_PERROR(saved_pos < 0);
 
 	EXIT_IF_PERROR(lseek(fd, block_nbr * MKFS_BLOCK_SIZE, SEEK_SET) < 0);
-	EXIT_IF_PERROR(write(fd, data, MKFS_BLOCK_SIZE) < 0);
+	EXIT_IF_PERROR(write(fd, &zero_block, MKFS_BLOCK_SIZE) < 0);
 
 	/* Restore saved pos */
 	EXIT_IF_PERROR(lseek(fd, saved_pos, SEEK_SET) < 0);
 }
 
-/* Fill a block with zeroes */
-void	write_zero_block(int fd, int block_nbr)
+/* Reserve the first n bits of the bitmap in the block block_nbr */
+void	bitmap_reserve_first_bits(int fd, int block_nbr, int n)
 {
-	__write_block(fd, block_nbr, &zero_block);
-}
+	off_t	saved_pos;
+	char	full_byte = 0xFF;
+	char	byte = 0;
 
-/* Fill a block with a bitmap with the first 10 ino marked reserved */
-void	write_first_ino_bitmap(int fd, int block_nbr)
-{
-	__write_block(fd, block_nbr, &inode_bitmap_first);
+	/* Save the postion in the file */
+	saved_pos = lseek(fd, 0, SEEK_CUR);
+	EXIT_IF_PERROR(saved_pos < 0);
+
+	EXIT_IF_PERROR(lseek(fd, block_nbr * MKFS_BLOCK_SIZE, SEEK_SET) < 0);
+
+	while (n >= 8) {
+		/* Just write some 0xFF */
+		EXIT_IF_PERROR(write(fd, &full_byte, 1) < 0);
+		n -= 8;
+	}
+	if (n != 0) {
+		/* We construct the last byte */
+		while (n--)
+			byte = ((byte << 1) | 1);
+		EXIT_IF_PERROR(write(fd, &byte, 1) < 0);
+	}
+
+	/* Restore saved pos */
+	EXIT_IF_PERROR(lseek(fd, saved_pos, SEEK_SET) < 0);
 }
 
 void	create_root_inode(int fd, struct ftfs_block_group *bg)
 {
 	off_t	saved_pos;
-	char	occupied_bitmap = 0x01; /* 1... .... */
 
 	/* Save the postion in the file */
 	saved_pos = lseek(fd, 0, SEEK_CUR);
@@ -178,18 +194,9 @@ void	create_root_inode(int fd, struct ftfs_block_group *bg)
 	EXIT_IF_PERROR(lseek(fd, root_inode.blocks[0] * MKFS_BLOCK_SIZE, SEEK_SET) < 0);
 	EXIT_IF_PERROR(write(fd, &root_dir, sizeof(root_dir)) < 0);
 
-	/* Mark the first block occupied */
-	EXIT_IF_PERROR(lseek(fd, bg->block_bitmap_block * MKFS_BLOCK_SIZE, SEEK_SET) < 0);
-	EXIT_IF_PERROR(write(fd, &occupied_bitmap, 1) < 0);
-	bg->free_blocks_count--;
-
 	/* Write the inode in the inode_table[1] */
 	EXIT_IF_PERROR(lseek(fd, bg->inode_table_block * MKFS_BLOCK_SIZE + sizeof(struct ftfs_inode), SEEK_SET) < 0);
 	EXIT_IF_PERROR(write(fd, &root_inode, sizeof(struct ftfs_inode)) < 0);
-
-	/* Reserve the first inos */
-	write_first_ino_bitmap(fd, bg->inode_bitmap_block);
-	bg->free_inodes_count -= 10;
 
 	/* Restore saved pos */
 	EXIT_IF_PERROR(lseek(fd, saved_pos, SEEK_SET) < 0);
@@ -243,7 +250,7 @@ void	compute_block_group_count(struct mkfs_infos *infos)
 void	write_block_groups(int fd, struct ftfs_super_block *sb, struct mkfs_infos *infos)
 {
 	int			gp = 0;
-	struct ftfs_block_group	bg;
+	struct ftfs_block_group	bg = { 0 };
 	off_t			current_block;
 
 	/* Go to the table */
@@ -254,27 +261,46 @@ void	write_block_groups(int fd, struct ftfs_super_block *sb, struct mkfs_infos *
 		bg.block_bitmap_block = current_block++;
 		bg.inode_bitmap_block = current_block++;
 		bg.inode_table_block = current_block++;
-		if (gp == infos->block_groups_count - 1 && infos->last_block_group_size) {
+		if (!(gp == infos->block_groups_count - 1 && infos->last_block_group_size)) {
+			bg.free_blocks_count = MKFS_FREE_BLOCKS_PER_GROUP;
+			bg.free_inodes_count = MKFS_INODES_PER_GROUP;
+		} else {
 			/* We're creating a truncated group */
 			bg.free_blocks_count = infos->last_block_group_size - MKFS_GROUP_OVERHEAD_BLOCKS;
-			bg.free_inodes_count = MKFS_INODES_PER_GROUP;
-
-		} else {
-			bg.free_blocks_count = MKFS_BLOCKS_PER_GROUP;
 			bg.free_inodes_count = MKFS_INODES_PER_GROUP;
 		}
 		write_zero_block(fd, bg.block_bitmap_block);
 		write_zero_block(fd, bg.inode_bitmap_block);
-		if (gp == 0)
+		if (gp == 0) {
+			int	special_overhead_blocks;
+			int	special_overhead_inodes;
+
+			/* The very first group has a certain amount of blocks occupied by the sb and bgd which
+			 * must be reflected in the free_blocks_count of the group and reserved in the bitmap. */
+			special_overhead_blocks = 1 /* sb */
+						+ infos->block_groups_table_size /* bgd */
+						+ 1; /* the root inode data */
+			bg.free_blocks_count -= special_overhead_blocks;
+
+			/* Same thing goes for the inodes, where we must reserve the first 10 ino */
+			special_overhead_inodes = 10;
+			bg.free_inodes_count -= special_overhead_inodes;
+
 			create_root_inode(fd, &bg);
+
+			bitmap_reserve_first_bits(fd, bg.block_bitmap_block, MKFS_GROUP_OVERHEAD_BLOCKS + special_overhead_inodes);
+			bitmap_reserve_first_bits(fd, bg.inode_bitmap_block, special_overhead_inodes);
+		} else {
+			bitmap_reserve_first_bits(fd, bg.block_bitmap_block, MKFS_GROUP_OVERHEAD_BLOCKS);
+		}
 		EXIT_IF_PERROR(write(fd, &bg, sizeof(struct ftfs_block_group)) < 0);
-		sb->inodes_count += bg.free_inodes_count;
+		sb->inodes_count += MKFS_INODES_PER_GROUP;
 		sb->free_inodes_count += bg.free_inodes_count;
-		sb->block_count += bg.free_blocks_count;
+		sb->block_count += MKFS_BLOCKS_PER_GROUP;
 		sb->free_blocks_count += bg.free_blocks_count;
 
-		current_block += MKFS_INODES_TABLE_BLOCKS + MKFS_BLOCKS_PER_GROUP;
 		gp++;
+		current_block = gp * MKFS_BLOCKS_PER_GROUP;
 	}
 }
 
